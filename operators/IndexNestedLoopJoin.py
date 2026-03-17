@@ -1,0 +1,205 @@
+"""
+Jointure boucle imbriquée sur index (Index Nested Loop Join).
+
+Principe
+--------
+Pour chaque tuple de la table gauche (outer loop) :
+  1. Extraire la valeur de clé  left_tuple.val[left_col]
+  2. Interroger l'index de la table droite : index.search(key)
+     → liste d'indices de tuples droits correspondants
+  3. Récupérer chaque tuple droit via right_table.get_tuple(idx)
+  4. Produire le tuple concaténé (gauche + droit)
+
+Avantage par rapport au Join classique
+---------------------------------------
+• O(n × k) au lieu de O(n × m) : on ne parcourt que les k lignes
+  correspondantes côté droit (souvent k ≪ m).
+• Pas de chargement de la table droite en mémoire.
+
+Contraintes
+-----------
+• L'index doit avoir été construit AVANT l'ouverture de l'opérateur.
+• La table droite est passée directement (TableDisque ou TableMemoire),
+  pas encapsulée dans un opérateur.
+• Seul le join par égalité (==) est supporté nativement.
+  Pour les plages, utiliser un BPlusTreeIndex et passer op + high.
+
+Comparaison avec Join / HashJoin
+---------------------------------
+• Join     : cache toute la table droite en mémoire, O(n × m)
+• HashJoin : construit une hash-table de la droite en mémoire, O(n + m)
+• IndexNLJ : aucun cache mémoire, index lu sur disque, O(n × k)
+"""
+
+from __future__ import annotations
+
+import math
+from typing import List, Optional
+
+from core.Instrumentation import Instrumentation
+from core.Operateur import Operateur
+from core.TableDisque import TableDisque
+from core.Tuple import Tuple
+
+
+class IndexNestedLoopJoin(Instrumentation, Operateur):
+    """
+    Jointure boucle imbriquée sur index.
+
+    Paramètres
+    ----------
+    left        : Operateur
+        Source des tuples gauches (outer loop).
+    right_table : TableDisque | TableMemoire
+        Table droite — accès direct par indice, pas d'itération.
+    right_index : StaticHashIndex | DynamicHashIndex | BPlusTreeIndex
+        Index pré-construit sur la colonne de jointure de la table droite.
+    left_col    : int
+        Indice de la colonne gauche utilisée comme clé de jointure.
+    op          : str
+        Opérateur de comparaison (défaut '==').
+        Pour op ≠ '==' un BPlusTreeIndex est requis.
+    high        :
+        Borne supérieure pour une recherche par intervalle (BPlusTree uniquement).
+    """
+
+    def __init__(
+        self,
+        left,
+        right_table,
+        right_index,
+        left_col:  int,
+        op:        str = "==",
+        high             = None,
+    ) -> None:
+        super().__init__("IndexNLJ" + str(Instrumentation.number))
+        Instrumentation.number += 1
+
+        self.left         = left
+        self.right_table  = right_table
+        self.right_index  = right_index
+        self.left_col     = left_col
+        self.op           = op
+        self.high         = high
+
+        self._is_disk:       bool          = isinstance(right_table, TableDisque)
+        self._left_tuple:    Optional[Tuple] = None
+        self._right_indices: List[int]       = []
+        self._right_pos:     int             = 0
+
+    # ── interface Operateur ────────────────────────────────────────────────
+
+    def open(self) -> None:
+        self.start()
+        self.left.open()
+        if self._is_disk:
+            self.right_table.open()
+        self._left_tuple    = None
+        self._right_indices = []
+        self._right_pos     = 0
+        self.tuplesProduits = 0
+        self.memoire        = 0
+        self.stop()
+
+    def next(self) -> Optional[Tuple]:
+        self.start()
+
+        while True:
+            # ── (a) Épuiser les correspondances du tuple gauche courant ──
+            while self._right_pos < len(self._right_indices):
+                idx   = self._right_indices[self._right_pos]
+                self._right_pos += 1
+                right = self._get_right(idx)
+                if right is None:
+                    continue
+                joined = self._concat(self._left_tuple, right)
+                self.produit(joined)
+                self.stop()
+                return joined
+
+            # ── (b) Plus de droits → passer au prochain tuple gauche ──
+            self._left_tuple = self.left.next()
+            if self._left_tuple is None:
+                self.stop()
+                return None
+
+            key = self._left_tuple.val[self.left_col]
+            self._right_indices = self._lookup(key)
+            self._right_pos     = 0
+
+    def close(self) -> None:
+        self.left.close()
+        if self._is_disk:
+            self.right_table.close()
+        self._left_tuple    = None
+        self._right_indices = []
+        self._right_pos     = 0
+
+    # ── requête sur l'index ────────────────────────────────────────────────
+
+    def _lookup(self, key) -> List[int]:
+        """Retourne les indices droits correspondant à *key* selon self.op."""
+
+        # Recherche par intervalle (BPlusTree uniquement)
+        if self.high is not None:
+            if not hasattr(self.right_index, "range_search"):
+                raise TypeError(
+                    "La recherche par intervalle nécessite un BPlusTreeIndex."
+                )
+            return self.right_index.range_search(key, self.high)
+
+        # Égalité — tous les index
+        if self.op == "==":
+            return self.right_index.search(key)
+
+        # Comparaisons étendues — BPlusTree uniquement
+        if not hasattr(self.right_index, "range_search"):
+            raise TypeError(
+                f"L'opérateur '{self.op}' nécessite un BPlusTreeIndex."
+            )
+
+        _NEG_INF = -math.inf
+        _POS_INF =  math.inf
+        col      = self.right_index._col
+
+        if self.op == ">=":
+            return self.right_index.range_search(key, _POS_INF)
+
+        if self.op == ">":
+            candidates = self.right_index.range_search(key, _POS_INF)
+            result = []
+            for i in candidates:
+                t = self._get_right(i)
+                if t is not None and t.val[col] > key:
+                    result.append(i)
+            return result
+
+        if self.op == "<=":
+            return self.right_index.range_search(_NEG_INF, key)
+
+        if self.op == "<":
+            candidates = self.right_index.range_search(_NEG_INF, key)
+            result = []
+            for i in candidates:
+                t = self._get_right(i)
+                if t is not None and t.val[col] < key:
+                    result.append(i)
+            return result
+
+        raise ValueError(f"Opérateur non supporté : '{self.op}'")
+
+    # ── accès table droite ─────────────────────────────────────────────────
+
+    def _get_right(self, idx: int) -> Optional[Tuple]:
+        if self._is_disk:
+            return self.right_table.get_tuple(idx)
+        valeurs = self.right_table.valeurs
+        return valeurs[idx] if 0 <= idx < len(valeurs) else None
+
+    # ── concaténation ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _concat(left: Tuple, right: Tuple) -> Tuple:
+        combined     = Tuple(len(left.val) + len(right.val))
+        combined.val = left.val + right.val
+        return combined
