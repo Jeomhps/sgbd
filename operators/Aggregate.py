@@ -45,6 +45,7 @@ class Aggregate(Instrumentation, Operateur):
         self.group_index = 0
         self.all_values = []
         self.processed = False
+        self.result_returned = False  # flag pour l'agrégation sans GROUP BY
         self.tuplesProduits = 0
         self.memoire = 0
         self.stop()
@@ -85,12 +86,12 @@ class Aggregate(Instrumentation, Operateur):
                 return None
         else:
             # Non-grouped aggregation (single result)
-            if not self.processed:
+            if self.result_returned:
                 self.stop()
                 return None
-            
-            self.processed = False  # Mark as done after this
-            
+
+            self.result_returned = True
+
             # Compute final aggregation
             if self.agg_func == 'COUNT':
                 result_value = len(self.all_values)
@@ -105,11 +106,11 @@ class Aggregate(Instrumentation, Operateur):
                     result_value = max(self.all_values)
             else:
                 result_value = 0  # Default for empty input
-            
+
             # Create result tuple with single value
             result_tuple = Tuple(1)
             result_tuple.val[0] = result_value
-            
+
             self.produit(result_tuple)
             self.stop()
             return result_tuple
