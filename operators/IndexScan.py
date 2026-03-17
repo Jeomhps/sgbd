@@ -150,26 +150,14 @@ class IndexScan(Instrumentation, Operateur):
 
     def _all_keys(self):
         """Retourne toutes les clés distinctes connues de l'index (pour !=)."""
-        # Fonctionne pour StaticHash et DynamicHash
-        if hasattr(self.index, "_buckets"):         # StaticHash
+        # Tous les index disque exposent _storage (IndexDisque)
+        if hasattr(self.index, "_storage"):
+            storage = self.index._storage
+            storage.open()
             seen = set()
-            for bucket in self.index._buckets:
-                for key, _ in bucket:
-                    if key not in seen:
-                        seen.add(key)
-                        yield key
-        elif hasattr(self.index, "directory"):      # DynamicHash
-            seen = set()
-            for bucket in self.index.directory:
-                for key, _ in bucket.entries:
-                    if key not in seen:
-                        seen.add(key)
-                        yield key
-        elif hasattr(self.index, "_root"):          # B+Tree : parcours feuilles
-            node = self.index._root
-            from index.BPlusTreeIndex import _Internal
-            while isinstance(node, _Internal):
-                node = node.children[0]
-            while node is not None:
-                yield from node.keys
-                node = node.next
+            for i in range(storage.table_size):
+                e = storage.get_entry(i)
+                if e is not None and e[0] not in seen:
+                    seen.add(e[0])
+                    yield e[0]
+            storage.close()

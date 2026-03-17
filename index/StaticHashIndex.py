@@ -1,86 +1,132 @@
 """
-Index par hachage statique.
+Index par hachage statique — stockage sur disque (IndexDisque).
 
 Structure
 ---------
 • nb_buckets seaux fixes, non redimensionnables.
 • Fonction de hachage : hash(key) % nb_buckets
-• Chaque seau contient une liste de paires (clé, indice_tuple).
-  La collision est résolue par chaînage en mémoire (liste Python).
+• Les paires (clé, indice_tuple) sont stockées dans un IndexDisque :
+    entrées du seau 0 | entrées du seau 1 | … | entrées du seau N-1
+• Le répertoire (start, count) par seau est sérialisé dans un fichier
+  compagnon .dir.
+
+Format du fichier .dir
+-----------------------
+  nb_buckets : 4B (unsigned int)
+  Pour chaque seau i :
+    start : 4B   — offset dans le fichier de données
+    count : 4B   — nombre d'entrées
 
 Complexité
 ----------
 • Construction : O(n)
-• Recherche    : O(1) en moyenne, O(n) dans le pire cas (collisions)
-
-Limitation
-----------
-• Efficacité se dégrade si nb_buckets est mal choisi par rapport à n.
-• Ne supporte pas les requêtes par intervalle.
+• Recherche    : O(1) en moyenne (1 lecture de bloc en cache)
 """
 
 from __future__ import annotations
 
+import os
+import struct
+import tempfile
 from typing import List
+
+from core.IndexDisque import IndexDisque
+
+
+_DEFAULT_DIR = tempfile.gettempdir()
 
 
 class StaticHashIndex:
     """
-    Index par hachage statique à nb_buckets seaux.
+    Index par hachage statique à nb_buckets seaux — données sur disque.
 
     Paramètres
     ----------
     nb_buckets : int
-        Nombre de seaux. Choisir proche du nombre de tuples distincts.
+        Nombre de seaux. Choisir proche du nombre de valeurs distinctes.
+    file_path  : str | None
+        Chemin du fichier de données (.dat). Si None, fichier temporaire.
     """
 
-    def __init__(self, nb_buckets: int = 10) -> None:
+    def __init__(
+        self,
+        nb_buckets: int = 10,
+        file_path: str | None = None,
+    ) -> None:
         self.nb_buckets = nb_buckets
-        # Chaque seau : liste de (clé, indice_tuple)
-        self._buckets: list[list[tuple]] = [[] for _ in range(nb_buckets)]
+
+        if file_path is None:
+            file_path = os.path.join(_DEFAULT_DIR, "static_hash_index.dat")
+        self._data_path = file_path
+        self._dir_path  = file_path + ".dir"
+
+        self._storage = IndexDisque(self._data_path)
         self._col: int = -1
-        self._size: int = 0        # nombre d'entrées insérées
+        self._size: int = 0
+
+        # Répertoire en mémoire après build/chargement : list[(start, count)]
+        self._directory: list[tuple[int, int]] = []
 
     # ── construction ───────────────────────────────────────────────────────
 
     def build(self, table, col: int) -> None:
-        """
-        Parcourt *table* et indexe la colonne *col*.
-
-        Accepte une TableMemoire ou une TableDisque.
-        """
-        self._col = col
-        self._buckets = [[] for _ in range(self.nb_buckets)]
+        """Parcourt *table*, indexe la colonne *col*, écrit sur disque."""
+        self._col  = col
         self._size = 0
 
+        # 1. Accumuler les entrées dans des seaux mémoire temporaires
+        buckets: list[list[tuple]] = [[] for _ in range(self.nb_buckets)]
         for idx, t in enumerate(self._iter_table(table)):
             key = t.val[col]
-            self._insert(key, idx)
+            b   = self._bucket_id(key)
+            buckets[b].append((key, idx))
+            self._size += 1
+
+        # 2. Construire le répertoire et la liste plate des entrées
+        directory: list[tuple[int, int]] = []
+        flat: list[tuple] = []
+        for bucket in buckets:
+            start = len(flat)
+            flat.extend(bucket)
+            directory.append((start, len(bucket)))
+
+        # 3. Écrire les entrées sur disque via IndexDisque
+        self._storage.write_entries(flat)
+
+        # 4. Sauvegarder le répertoire dans le fichier .dir
+        self._directory = directory
+        self._save_dir()
 
         print(
             f"[StaticHash] index construit : {self._size} entrées "
-            f"dans {self.nb_buckets} seaux (col={col})"
+            f"dans {self.nb_buckets} seaux (col={col}) → {self._data_path}"
         )
-
-    def _insert(self, key, tuple_idx: int) -> None:
-        b = self._bucket_id(key)
-        self._buckets[b].append((key, tuple_idx))
-        self._size += 1
 
     # ── recherche ──────────────────────────────────────────────────────────
 
     def search(self, value) -> List[int]:
         """Retourne les indices des tuples dont la clé vaut *value*."""
+        self._ensure_dir_loaded()
         b = self._bucket_id(value)
-        return [idx for key, idx in self._buckets[b] if key == value]
+        start, count = self._directory[b]
+
+        self._storage.open()
+        results = [
+            idx
+            for key, idx in self._storage.scan_range(start, start + count)
+            if key == value
+        ]
+        self._storage.close()
+        return results
 
     # ── statistiques ───────────────────────────────────────────────────────
 
     def stats(self) -> str:
-        sizes   = [len(b) for b in self._buckets]
+        self._ensure_dir_loaded()
+        sizes     = [cnt for _, cnt in self._directory]
         non_empty = sum(1 for s in sizes if s > 0)
-        avg     = self._size / self.nb_buckets if self.nb_buckets else 0
-        mx      = max(sizes) if sizes else 0
+        avg       = self._size / self.nb_buckets if self.nb_buckets else 0
+        mx        = max(sizes) if sizes else 0
         return (
             f"StaticHashIndex | seaux={self.nb_buckets} "
             f"non-vides={non_empty} | "
@@ -88,14 +134,41 @@ class StaticHashIndex:
             f"entrées={self._size}"
         )
 
-    # ── helpers ────────────────────────────────────────────────────────────
+    # ── helpers internes ───────────────────────────────────────────────────
 
     def _bucket_id(self, key) -> int:
         return hash(key) % self.nb_buckets
 
+    def _save_dir(self) -> None:
+        with open(self._dir_path, "wb") as f:
+            f.write(struct.pack("I", self.nb_buckets))
+            for start, count in self._directory:
+                f.write(struct.pack("II", start, count))
+
+    def _load_dir(self) -> None:
+        with open(self._dir_path, "rb") as f:
+            (nb,) = struct.unpack("I", f.read(4))
+            self.nb_buckets = nb
+            self._directory = []
+            for _ in range(nb):
+                start, count = struct.unpack("II", f.read(8))
+                self._directory.append((start, count))
+        # Reconstruire _size
+        self._storage.open()
+        self._size = self._storage.table_size
+        self._storage.close()
+
+    def _ensure_dir_loaded(self) -> None:
+        if not self._directory:
+            if os.path.exists(self._dir_path):
+                self._load_dir()
+            else:
+                raise RuntimeError(
+                    "StaticHashIndex : index non construit (appeler build() d'abord)."
+                )
+
     @staticmethod
     def _iter_table(table):
-        """Itère sur les tuples d'une TableMemoire ou TableDisque."""
         from core.TableDisque import TableDisque
         if isinstance(table, TableDisque):
             from core.FullScanTableDisque import FullScanTableDisque
@@ -108,5 +181,4 @@ class StaticHashIndex:
                 yield t
             scan.close()
         else:
-            # TableMemoire
             yield from table.valeurs
