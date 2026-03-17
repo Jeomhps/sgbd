@@ -1,0 +1,38 @@
+name: Python Unit Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Run Python unit tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.14'
+        
+    - name: Install uv
+      run: |
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        echo "${HOME}/.cargo/bin" >> $GITHUB_PATH
+        
+    - name: Install dependencies with uv
+      run: |
+        uv pip install pytest
+        
+    - name: Run unit tests
+      run: |
+        uv run python -m pytest tests/unit/ -v
+        
+    - name: Run manual integration test
+      run: |
+        uv run python tests/manual/TestDiskIntegration.py
