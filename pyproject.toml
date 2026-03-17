@@ -2,7 +2,7 @@
 name = "miniSGBD"
 version = "0.1.0"
 description = "Mini SGBD Database Project"
-authors = [{name = "Jeomhps"}]
+authors = [{name = "Jeomhps"}, {name = "Orjawell"}]
 dependencies = []
 
 [tool.uv]
