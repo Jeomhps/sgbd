@@ -6,11 +6,13 @@ A lightweight relational database system implementing core relational algebra op
 
 ```
 miniSGBD/
-├── core/          # Base classes and data structures (provided)
+├── core/          # Base classes and data structures
 ├── operators/     # Database operators (Project, Restrict, Join, Aggregate)
-├── tests/         # Test suite for all operators
-├── run.py         # Easy test runner
-├── Makefile       # Alternative test runner
+├── tests/         # Unit tests (pytest)
+│   ├── core/      # Core component tests
+│   └── operators/ # Operator tests
+├── manual_tests/  # Manual demonstration tests
+├── pyproject.toml # Project configuration with uv dependencies
 └── README.md      # This file
 ```
 
@@ -37,56 +39,53 @@ miniSGBD/
 
 ## 🧪 Testing
 
-### Manual Tests (Demonstration)
-For visual demonstration and learning:
-```bash
-make test        # Run all manual tests
-python3 run.py   # Alternative runner
-```
-
 ### Unit Tests (CI/CD)
 For automated testing and CI pipelines:
 ```bash
 # Run all unit tests
-./test.sh            # Simple script (recommended)
-# or
-uv test
-pytest tests/unit/
+uv run pytest tests
 
-# Run specific test file
-pytest tests/unit/test_operators.py
+# Run specific test directory
+uv run pytest tests/core/    # Core component tests
+uv run pytest tests/operators/ # Operator tests
 
 # Run with verbose output
-./test.sh -v
-pytest tests/unit/ -v
+uv run pytest tests -v
 
 # Run and stop on first failure
-./test.sh -x
-pytest tests/unit/ -x
+uv run pytest tests -x
+```
+
+### Manual Tests (Demonstration)
+For visual demonstration and learning:
+```bash
+# Run manual integration tests
+python manual_tests/TestDiskIntegration.py
+python manual_tests/TestProject.py
+python manual_tests/TestRestrict.py
 ```
 
 ### Test Organization
 ```
 tests/
-├── unit/          # Automated unit tests (pytest)
-│   └── test_operators.py  # All operator tests
-└── manual/        # Manual demonstration tests
-    ├── TestProject.py      # Visual Project tests
-    ├── TestRestrict.py     # Visual Restrict tests
-    ├── TestJoin.py         # Visual Join tests
-    └── TestAggregate.py   # Visual Aggregate tests
-```
+├── core/          # Core component tests (Tuple, TableMemoire, etc.)
+│   ├── test_tuple.py
+│   ├── test_table_memoire.py
+│   ├── test_full_scan_table_memoire.py
+│   └── test_disk_table.py
+└── operators/     # Operator tests (Project, Restrict, Join, etc.)
+    ├── test_project_operator.py
+    ├── test_restrict_operator.py
+    ├── test_join_operator.py
+    ├── test_aggregate_operator.py
+    └── test_hashjoin.py
 
-### Test Output Example
-```
-=== Testing Aggregate Operator ===
-Test 1: SUM of quantities
-SUM result: 21 (expected: 5+3+7+2+4=21)
-
-Test 2: GROUP BY product_id with AVG(price)
-Product 101: Average price = 10.00
-Product 102: Average price = 15.00
-✅ All tests passed!
+manual_tests/     # Manual demonstration tests
+├── TestDiskIntegration.py
+├── TestProject.py
+├── TestRestrict.py
+├── TestJoin.py
+└── TestAggregate.py
 ```
 
 ## 📋 Usage Examples
@@ -155,9 +154,9 @@ This project demonstrates:
 ## 🤝 Contributing
 
 1. Add new operators to `operators/` directory
-2. Create corresponding tests in `tests/`
-3. Update `run.py` and `Makefile` with new test options
-4. Run `make test` to verify everything works
+2. Create corresponding tests in `tests/core/` or `tests/operators/`
+3. Run `uv run pytest tests` to verify everything works
+4. Ensure all tests pass before submitting changes
 
 ## 📊 Performance
 
