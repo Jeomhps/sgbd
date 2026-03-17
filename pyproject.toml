@@ -3,9 +3,10 @@ name = "miniSGBD"
 version = "0.1.0"
 description = "Mini SGBD Database Project"
 authors = [{name = "Jeomhps"}]
+dependencies = []
 
 [tool.uv]
-dev-dependencies = []
+dev-dependencies = ["pytest"]
 
 [build-system]
 requires = ["hatchling"]

@@ -8,49 +8,49 @@ test: all
 # Run all tests with proper Python path
 all:
 	@echo "🧪 Running all tests..."
-	@PYTHONPATH=. python3 tests/TestProject.py
+	@PYTHONPATH=. python3 tests/manual/TestProject.py
 	@echo ""
-	@PYTHONPATH=. python3 tests/TestRestrict.py
+	@PYTHONPATH=. python3 tests/manual/TestRestrict.py
 	@echo ""
-	@PYTHONPATH=. python3 tests/TestRestrictChained.py
+	@PYTHONPATH=. python3 tests/manual/TestRestrictChained.py
 	@echo ""
-	@PYTHONPATH=. python3 tests/TestRestrictChainedFixed.py
+	@PYTHONPATH=. python3 tests/manual/TestRestrictChainedFixed.py
 	@echo ""
-	@PYTHONPATH=. python3 tests/TestJoin.py
+	@PYTHONPATH=. python3 tests/manual/TestJoin.py
 	@echo ""
-	@PYTHONPATH=. python3 tests/TestAggregate.py
+	@PYTHONPATH=. python3 tests/manual/TestAggregate.py
 	@echo ""
 	@echo "🎉 All tests completed!"
 
 # Run specific tests
 project:
 	@echo "🧪 Running Project tests..."
-	@PYTHONPATH=. python3 tests/TestProject.py
+	@PYTHONPATH=. python3 tests/manual/TestProject.py
 
 restrict:
 	@echo "🧪 Running Restrict tests..."
-	@PYTHONPATH=. python3 tests/TestRestrict.py
+	@PYTHONPATH=. python3 tests/manual/TestRestrict.py
 
 chained:
 	@echo "🧪 Running Chained tests..."
-	@PYTHONPATH=. python3 tests/TestRestrictChained.py
+	@PYTHONPATH=. python3 tests/manual/TestRestrictChained.py
 
 fixed:
 	@echo "🧪 Running Fixed data tests..."
-	@PYTHONPATH=. python3 tests/TestRestrictChainedFixed.py
+	@PYTHONPATH=. python3 tests/manual/TestRestrictChainedFixed.py
 
 join:
 	@echo "🧪 Running Join tests..."
-	@PYTHONPATH=. python3 tests/TestJoin.py
+	@PYTHONPATH=. python3 tests/manual/TestJoin.py
 
 aggregate:
 	@echo "🧪 Running Aggregate tests..."
-	@PYTHONPATH=. python3 tests/TestAggregate.py
+	@PYTHONPATH=. python3 tests/manual/TestAggregate.py
 
 # Clean up
 clean:
 	@echo "🧹 Cleaning up..."
-	@rm -rf __pycache__ tests/__pycache__ operators/__pycache__ core/__pycache__
+	@rm -rf __pycache__ tests/manual/__pycache__ operators/__pycache__ core/__pycache__
 	@echo "✨ Cleaned!"
 
 # Help

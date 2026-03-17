@@ -38,12 +38,12 @@ def main():
     if test_name in ['all', 'test']:
         print("🧪 Running all tests...")
         tests = [
-            'tests/TestProject.py',
-            'tests/TestRestrict.py',
-            'tests/TestRestrictChained.py', 
-            'tests/TestRestrictChainedFixed.py',
-            'tests/TestJoin.py',
-            'tests/TestAggregate.py'
+            'tests/manual/TestProject.py',
+            'tests/manual/TestRestrict.py',
+            'tests/manual/TestRestrictChained.py', 
+            'tests/manual/TestRestrictChainedFixed.py',
+            'tests/manual/TestJoin.py',
+            'tests/manual/TestAggregate.py'
         ]
         for test in tests:
             print(f"\n📋 {test}:")
@@ -52,27 +52,27 @@ def main():
         
     elif test_name == 'project':
         print("🧪 Running Project tests...")
-        run_command("python3 tests/TestProject.py")
+        run_command("python3 tests/manual/TestProject.py")
         
     elif test_name == 'restrict':
         print("🧪 Running Restrict tests...")
-        run_command("python3 tests/TestRestrict.py")
+        run_command("python3 tests/manual/TestRestrict.py")
         
     elif test_name == 'chained':
         print("🧪 Running Chained restrict tests...")
-        run_command("python3 tests/TestRestrictChained.py")
+        run_command("python3 tests/manual/TestRestrictChained.py")
         
     elif test_name == 'fixed':
         print("🧪 Running Fixed data tests...")
-        run_command("python3 tests/TestRestrictChainedFixed.py")
+        run_command("python3 tests/manual/TestRestrictChainedFixed.py")
     
     elif test_name == 'join':
         print("🧪 Running Join tests...")
-        run_command("python3 tests/TestJoin.py")
+        run_command("python3 tests/manual/TestJoin.py")
     
     elif test_name == 'aggregate':
         print("🧪 Running Aggregate tests...")
-        run_command("python3 tests/TestAggregate.py")
+        run_command("python3 tests/manual/TestAggregate.py")
         
     elif test_name == 'clean':
         print("🧹 Cleaning cache files...")

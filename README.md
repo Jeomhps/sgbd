@@ -36,20 +36,44 @@ miniSGBD/
 
 ## 🧪 Testing
 
-### Run All Tests
+### Manual Tests (Demonstration)
+For visual demonstration and learning:
 ```bash
-make test
-# or
-python3 run.py
+make test        # Run all manual tests
+python3 run.py   # Alternative runner
 ```
 
-### Run Specific Tests
+### Unit Tests (CI/CD)
+For automated testing and CI pipelines:
 ```bash
-make project      # Test Project operator
-make restrict     # Test Restrict operator
-make join         # Test Join operator
-make aggregate    # Test Aggregate operator
-make clean        # Clean cache files
+# Run all unit tests
+./test.sh            # Simple script (recommended)
+# or
+uv test
+pytest tests/unit/
+
+# Run specific test file
+pytest tests/unit/test_operators.py
+
+# Run with verbose output
+./test.sh -v
+pytest tests/unit/ -v
+
+# Run and stop on first failure
+./test.sh -x
+pytest tests/unit/ -x
+```
+
+### Test Organization
+```
+tests/
+├── unit/          # Automated unit tests (pytest)
+│   └── test_operators.py  # All operator tests
+└── manual/        # Manual demonstration tests
+    ├── TestProject.py      # Visual Project tests
+    ├── TestRestrict.py     # Visual Restrict tests
+    ├── TestJoin.py         # Visual Join tests
+    └── TestAggregate.py   # Visual Aggregate tests
 ```
 
 ### Test Output Example
