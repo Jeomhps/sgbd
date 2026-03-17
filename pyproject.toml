@@ -6,8 +6,8 @@ authors = [{name = "Jeomhps"}]
 dependencies = []
 requires-python = ">=3.14"
 
-[tool.uv]
-dependency-groups.dev = ["pytest"]
+[dependency-groups]
+dev = ["pytest>=8.0"]
 
 [build-system]
 requires = ["hatchling"]
