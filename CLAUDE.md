@@ -67,6 +67,8 @@ SQL string
 | `operators/HashJoin.py` | `HashJoin(left, right, l_col, r_col)` | Hash-build on right, probe with left |
 | `operators/Aggregate.py` | `Aggregate(child, agg_col, func, group_cols)` | Two-phase (collect all → compute); `result_returned` flag prevents infinite output |
 | `operators/IndexScan.py` | `IndexScan(table, index, value, op, high)` | Queries index → `_indices` list → `table.get_tuple(i)` on `next()` |
+| `operators/IndexNestedLoopJoin.py` | `IndexNestedLoopJoin(left, right_table, right_index, left_col, op, high)` | Per left tuple: `right_index.search(key)` → fetch right rows directly; no right-side caching; iterative `next()` (no recursion) |
+| `operators/SortMergeJoin.py` | `SortMergeJoin(left, right, left_col, right_col)` | Phase 1: collect + sort both sides by join column; Phase 2: two-pointer merge — left scanned once, right group replayed for duplicate left keys |
 
 ### Indexes
 
