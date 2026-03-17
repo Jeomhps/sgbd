@@ -22,6 +22,8 @@ all:
 	@echo ""
 	@PYTHONPATH=. python3 tests/manual/TestSQL.py
 	@echo ""
+	@PYTHONPATH=. python3 tests/manual/TestDiskIntegration.py
+	@echo ""
 	@echo "🎉 All tests completed!"
 
 # Run specific tests
@@ -52,6 +54,10 @@ aggregate:
 sql:
 	@echo "🧪 Running SQL parser tests..."
 	@PYTHONPATH=. python3 tests/manual/TestSQL.py
+
+disk:
+	@echo "🧪 Running Disk integration tests..."
+	@PYTHONPATH=. python3 tests/manual/TestDiskIntegration.py
 
 # Clean up
 clean:

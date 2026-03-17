@@ -46,6 +46,7 @@ def main():
             'tests/manual/TestJoin.py',
             'tests/manual/TestAggregate.py',
             'tests/manual/TestSQL.py',
+            'tests/manual/TestDiskIntegration.py',
         ]
         for test in tests:
             print(f"\n📋 {test}:")
@@ -80,6 +81,10 @@ def main():
         print("🧪 Running SQL parser tests...")
         run_command("python3 tests/manual/TestSQL.py")
 
+    elif test_name == 'disk':
+        print("🧪 Running Disk integration tests...")
+        run_command("python3 tests/manual/TestDiskIntegration.py")
+
     elif test_name == 'clean':
         print("🧹 Cleaning cache files...")
         run_command("rm -rf __pycache__ tests/__pycache__ operators/__pycache__ core/__pycache__")
@@ -87,7 +92,7 @@ def main():
         
     else:
         print(f"❌ Unknown test: {test_name}")
-        print("Available options: all, project, restrict, chained, fixed, join, aggregate, sql, clean")
+        print("Available options: all, project, restrict, chained, fixed, join, aggregate, sql, disk, clean")
 
 if __name__ == '__main__':
     main()

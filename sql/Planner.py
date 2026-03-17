@@ -33,6 +33,8 @@ from sql.Catalog import Catalog
 from sql.Parser import AggExpr, ColumnRef, Condition, SelectQuery
 
 from core.FullScanTableMemoire import FullScanTableMemoire
+from core.FullScanTableDisque import FullScanTableDisque
+from core.TableDisque import TableDisque
 from core.Operateur import Operateur
 from operators.Aggregate import Aggregate
 from operators.Join import Join
@@ -167,20 +169,20 @@ class QueryPlanner:
         # Single table – just a full scan
         if len(tables) == 1:
             tbl  = self.catalog.get_table(tables[0])
-            op   = FullScanTableMemoire(tbl)
+            op   = self._make_scan(tbl)
             node = PlanNode(f"FullScan({tables[0]})")
             return op, node
 
         # Multiple tables: left-deep join tree
         left_op, left_node = (
-            FullScanTableMemoire(self.catalog.get_table(tables[0])),
+            self._make_scan(self.catalog.get_table(tables[0])),
             PlanNode(f"FullScan({tables[0]})"),
         )
         accumulated = [tables[0].upper()]
 
         for next_table in tables[1:]:
             next_upper = next_table.upper()
-            right_op   = FullScanTableMemoire(self.catalog.get_table(next_table))
+            right_op   = self._make_scan(self.catalog.get_table(next_table))
             right_node = PlanNode(f"FullScan({next_table})")
 
             jc = self._find_join_condition(join_conds, accumulated, next_upper)
@@ -236,6 +238,15 @@ class QueryPlanner:
                 return Condition(left=cond.right, op=cond.op, right=cond.left)  # type: ignore[arg-type]
 
         return None
+
+    # ── scan factory ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _make_scan(tbl) -> Operateur:
+        """Return the appropriate FullScan operator for the given table type."""
+        if isinstance(tbl, TableDisque):
+            return FullScanTableDisque(tbl)
+        return FullScanTableMemoire(tbl)
 
     # ── column resolution ──────────────────────────────────────────────────
 
