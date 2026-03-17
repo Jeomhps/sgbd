@@ -42,18 +42,18 @@ miniSGBD/
 ### Unit Tests (CI/CD)
 For automated testing and CI pipelines:
 ```bash
-# Run all unit tests
-uv run pytest tests
+# Run all unit tests (pytest.ini configured to find tests automatically)
+uv run pytest
 
 # Run specific test directory
 uv run pytest tests/core/    # Core component tests
 uv run pytest tests/operators/ # Operator tests
 
 # Run with verbose output
-uv run pytest tests -v
+uv run pytest -v
 
 # Run and stop on first failure
-uv run pytest tests -x
+uv run pytest -x
 ```
 
 ### Manual Tests (Demonstration)
@@ -155,7 +155,7 @@ This project demonstrates:
 
 1. Add new operators to `operators/` directory
 2. Create corresponding tests in `tests/core/` or `tests/operators/`
-3. Run `uv run pytest tests` to verify everything works
+3. Run `uv run pytest` to verify everything works
 4. Ensure all tests pass before submitting changes
 
 ## 📊 Performance
