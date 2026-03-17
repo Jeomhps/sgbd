@@ -165,9 +165,12 @@ class BPlusTreeIndex:
         self._height = 1
         self._size   = 0
         self._built  = False
+        block_size   = self._get_block_size(table)
 
+        # Chaque entrée stocke (clé, n° de bloc) au lieu de (clé, indice tuple).
         for idx, t in enumerate(self._iter_table(table)):
-            self._insert_mem(t.val[col], idx)
+            block_no = idx // block_size
+            self._insert_mem(t.val[col], block_no)
 
         # Sérialiser les feuilles triées dans IndexDisque
         self._flush_to_disk()
@@ -182,46 +185,55 @@ class BPlusTreeIndex:
     # ── recherche exacte ───────────────────────────────────────────────────
 
     def search(self, value: Any) -> List[int]:
-        """Retourne les indices des tuples dont la clé vaut *value*."""
+        """
+        Retourne les numéros de blocs contenant des tuples dont la clé vaut *value*.
+
+        Les doublons sont supprimés (plusieurs tuples dans le même bloc → un seul
+        numéro de bloc retourné) tout en préservant l'ordre de découverte.
+        """
         self._ensure_loaded()
         pos = self._bisect_pos(value)
         if pos is None:
             return []
 
-        results: List[int] = []
+        seen: dict[int, None] = {}
         self._storage.open()
         i = pos
         while i < self._storage.table_size:
             e = self._storage.get_entry(i)
             if e is None or e[0] != value:
                 break
-            results.append(e[1])
+            if e[1] not in seen:
+                seen[e[1]] = None
             i += 1
         self._storage.close()
-        return results
+        return list(seen)
 
     # ── recherche par intervalle ───────────────────────────────────────────
 
     def range_search(self, low: Any, high: Any) -> List[int]:
         """
-        Retourne les indices des tuples dont la clé est dans [low, high].
+        Retourne les numéros de blocs contenant des tuples dont la clé est dans [low, high].
+
+        Les doublons sont supprimés tout en préservant l'ordre de découverte.
         """
         self._ensure_loaded()
         pos = self._bisect_pos_ge(low)
         if pos is None:
             return []
 
-        results: List[int] = []
+        seen: dict[int, None] = {}
         self._storage.open()
         i = pos
         while i < self._storage.table_size:
             e = self._storage.get_entry(i)
             if e is None or e[0] > high:
                 break
-            results.append(e[1])
+            if e[1] not in seen:
+                seen[e[1]] = None
             i += 1
         self._storage.close()
-        return results
+        return list(seen)
 
     # ── statistiques ───────────────────────────────────────────────────────
 
@@ -375,6 +387,11 @@ class BPlusTreeIndex:
         return leaves, internals
 
     # ── itération table ────────────────────────────────────────────────────
+
+    @staticmethod
+    def _get_block_size(table) -> int:
+        """Retourne la taille de bloc de *table* (1 pour TableMemoire)."""
+        return getattr(table, "block_size", 1)
 
     @staticmethod
     def _iter_table(table):

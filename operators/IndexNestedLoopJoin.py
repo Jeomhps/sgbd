@@ -82,10 +82,15 @@ class IndexNestedLoopJoin(Instrumentation, Operateur):
         self.op           = op
         self.high         = high
 
-        self._is_disk:       bool          = isinstance(right_table, TableDisque)
-        self._left_tuple:    Optional[Tuple] = None
-        self._right_indices: List[int]       = []
-        self._right_pos:     int             = 0
+        self._is_disk:          bool            = isinstance(right_table, TableDisque)
+        self._left_tuple:       Optional[Tuple] = None
+        self._current_key:      object          = None   # clé du tuple gauche courant
+        # Niveau 1 : liste des n° de blocs retournés par l'index
+        self._right_blocks:     List[int]       = []
+        self._right_block_pos:  int             = 0
+        # Niveau 2 : tuples du bloc courant, après filtrage
+        self._block_tuples:     List[Tuple]     = []
+        self._block_tuple_pos:  int             = 0
 
     # ── interface Operateur ────────────────────────────────────────────────
 
@@ -94,46 +99,65 @@ class IndexNestedLoopJoin(Instrumentation, Operateur):
         self.left.open()
         if self._is_disk:
             self.right_table.open()
-        self._left_tuple    = None
-        self._right_indices = []
-        self._right_pos     = 0
-        self.tuplesProduits = 0
-        self.memoire        = 0
+        self._left_tuple      = None
+        self._current_key     = None
+        self._right_blocks    = []
+        self._right_block_pos = 0
+        self._block_tuples    = []
+        self._block_tuple_pos = 0
+        self.tuplesProduits   = 0
+        self.memoire          = 0
         self.stop()
 
     def next(self) -> Optional[Tuple]:
         self.start()
 
         while True:
-            # ── (a) Épuiser les correspondances du tuple gauche courant ──
-            while self._right_pos < len(self._right_indices):
-                idx   = self._right_indices[self._right_pos]
-                self._right_pos += 1
-                right = self._get_right(idx)
+            # ── (a) Émettre le prochain tuple correspondant dans le bloc courant ──
+            while self._block_tuple_pos < len(self._block_tuples):
+                right = self._block_tuples[self._block_tuple_pos]
+                self._block_tuple_pos += 1
                 if right is None:
+                    continue
+                # Filtrer : seuls les tuples dont la colonne indexée == clé gauche
+                right_col = self.right_index._col
+                if right.val[right_col] != self._current_key:
                     continue
                 joined = self._concat(self._left_tuple, right)
                 self.produit(joined)
                 self.stop()
                 return joined
 
-            # ── (b) Plus de droits → passer au prochain tuple gauche ──
-            self._left_tuple = self.left.next()
-            if self._left_tuple is None:
-                self.stop()
-                return None
+            # ── (b) Bloc courant épuisé → passer au prochain bloc ──
+            while self._right_block_pos < len(self._right_blocks):
+                block_no              = self._right_blocks[self._right_block_pos]
+                self._right_block_pos += 1
+                self._block_tuples    = self._get_block(block_no)
+                self._block_tuple_pos = 0
+                break   # retourner en (a) pour parcourir ce bloc
+            else:
+                # ── (c) Plus de blocs → passer au prochain tuple gauche ──
+                self._left_tuple = self.left.next()
+                if self._left_tuple is None:
+                    self.stop()
+                    return None
 
-            key = self._left_tuple.val[self.left_col]
-            self._right_indices = self._lookup(key)
-            self._right_pos     = 0
+                self._current_key     = self._left_tuple.val[self.left_col]
+                self._right_blocks    = self._lookup(self._current_key)
+                self._right_block_pos = 0
+                self._block_tuples    = []
+                self._block_tuple_pos = 0
 
     def close(self) -> None:
         self.left.close()
         if self._is_disk:
             self.right_table.close()
-        self._left_tuple    = None
-        self._right_indices = []
-        self._right_pos     = 0
+        self._left_tuple      = None
+        self._current_key     = None
+        self._right_blocks    = []
+        self._right_block_pos = 0
+        self._block_tuples    = []
+        self._block_tuple_pos = 0
 
     # ── requête sur l'index ────────────────────────────────────────────────
 
@@ -188,13 +212,11 @@ class IndexNestedLoopJoin(Instrumentation, Operateur):
 
         raise ValueError(f"Opérateur non supporté : '{self.op}'")
 
-    # ── accès table droite ─────────────────────────────────────────────────
+    # ── accès table droite par bloc ────────────────────────────────────────
 
-    def _get_right(self, idx: int) -> Optional[Tuple]:
-        if self._is_disk:
-            return self.right_table.get_tuple(idx)
-        valeurs = self.right_table.valeurs
-        return valeurs[idx] if 0 <= idx < len(valeurs) else None
+    def _get_block(self, block_no: int) -> List[Tuple]:
+        """Retourne tous les tuples du bloc *block_no* de la table droite."""
+        return self.right_table.get_block(block_no)
 
     # ── concaténation ──────────────────────────────────────────────────────
 

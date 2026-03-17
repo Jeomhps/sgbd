@@ -1,20 +1,34 @@
 """
-IndexScan – opérateur d'accès par index (orienté blocs).
+Opérateur d'accès direct par bloc via un index (GET WITH INDEX).
 
-Se substitue à FullScanTableDisque quand un index est disponible.
-Au lieu de lire tous les blocs, il consulte l'index pour obtenir les
-numéros de blocs correspondants, lit chaque bloc directement, puis filtre
-les tuples à l'intérieur.
-
-Opérateurs supportés
---------------------
-  ==          → index.search(value)           (tous les index)
-  >, >=, <, <=, range → index.range_search()  (B+Tree uniquement)
-
-Pipeline
+Principe
 --------
-    IndexScan(table, index, val, op='==')
-        └── [Project / Restrict / …]
+L'index stocke des paires (clé, n° de bloc).  Cet opérateur :
+
+  1. Interroge l'index pour obtenir les numéros de blocs correspondant à
+     la valeur recherchée.
+  2. Lit chaque bloc directement depuis la table (accès direct, pas de
+     full scan).
+  3. Filtre les tuples du bloc dont la colonne indexée vaut la valeur
+     recherchée.
+  4. Retourne ces tuples un par un via l'interface open/next/close.
+
+Pourquoi l'index seul ne suffit pas
+-------------------------------------
+L'index retourne des n° de blocs, pas des tuples.  Il faut un opérateur
+pour lire le bloc et trouver les tuples correspondants à l'intérieur.
+C'est ce que fait GetWithIndex.
+
+Avantage vs FullScan
+---------------------
+• FullScan lit tous les blocs : O(N_blocs)
+• GetWithIndex lit seulement les blocs renvoyés par l'index : O(k_blocs)
+  où k_blocs ≪ N_blocs quand les valeurs indexées sont uniques ou rares.
+
+Comparaison avec IndexScan
+---------------------------
+GetWithIndex est la version explicitement orientée "blocs" de IndexScan.
+IndexScan a été mis à jour pour utiliser le même mécanisme en interne.
 """
 
 from __future__ import annotations
@@ -27,9 +41,9 @@ from core.Operateur import Operateur
 from core.Tuple import Tuple
 
 
-class IndexScan(Instrumentation, Operateur):
+class GetWithIndex(Instrumentation, Operateur):
     """
-    Accès à une table via un index pré-construit (accès direct par bloc).
+    Accès direct à une table via un index orienté blocs.
 
     Paramètres
     ----------
@@ -37,13 +51,15 @@ class IndexScan(Instrumentation, Operateur):
         TableDisque ou TableMemoire.  Doit exposer ``get_block(block_no)``.
     index :
         StaticHashIndex | DynamicHashIndex | BPlusTreeIndex.
+        Doit avoir été construit avec ``build()`` avant l'ouverture.
     value :
-        Valeur de recherche.
+        Valeur de recherche (pour l'opérateur ``==`` ou bornes de range).
     op : str
-        Opérateur de comparaison : ``'=='``, ``'!='``, ``'>'``, ``'>='``,
-        ``'<'``, ``'<='``.
+        Opérateur de comparaison : ``'=='``, ``'>'``, ``'>='``, ``'<'``,
+        ``'<='``.  Les opérateurs de range nécessitent un BPlusTreeIndex.
     high :
-        Borne supérieure pour une recherche par intervalle (BPlusTreeIndex).
+        Borne supérieure pour une recherche par intervalle.
+        Si fourni, la recherche devient ``range_search(value, high)``.
     """
 
     def __init__(
@@ -51,10 +67,10 @@ class IndexScan(Instrumentation, Operateur):
         table,
         index,
         value,
-        op:   str  = "==",
+        op:   str = "==",
         high        = None,
     ) -> None:
-        super().__init__("IndexScan" + str(Instrumentation.number))
+        super().__init__("GetWithIndex" + str(Instrumentation.number))
         Instrumentation.number += 1
         self.table  = table
         self.index  = index
@@ -62,10 +78,10 @@ class IndexScan(Instrumentation, Operateur):
         self.op     = op
         self.high   = high
 
-        # Colonne indexée (pour filtrer dans le bloc)
+        # Colonne indexée (pour filtrer les tuples dans le bloc)
         self._col: int = -1
 
-        # État de l'itération par blocs
+        # État de l'itération
         self._block_numbers:   List[int]   = []
         self._block_pos:       int         = 0
         self._current_block:   List[Tuple] = []
@@ -75,7 +91,8 @@ class IndexScan(Instrumentation, Operateur):
 
     def open(self) -> None:
         self.start()
-        self.table.open()
+        if hasattr(self.table, "open"):
+            self.table.open()
         self._col           = self.index._col
         self._block_numbers = self._query_index()
         self._block_pos     = 0
@@ -109,7 +126,8 @@ class IndexScan(Instrumentation, Operateur):
             self._slot          = 0
 
     def close(self) -> None:
-        self.table.close()
+        if hasattr(self.table, "close"):
+            self.table.close()
         self._block_numbers = []
         self._current_block = []
         self._block_pos     = 0
@@ -118,7 +136,7 @@ class IndexScan(Instrumentation, Operateur):
     # ── résolution de l'index ──────────────────────────────────────────────
 
     def _query_index(self) -> List[int]:
-        """Interroge l'index selon self.op et retourne les n° de blocs."""
+        """Interroge l'index et retourne les n° de blocs à lire."""
 
         if self.high is not None:
             if not hasattr(self.index, "range_search"):
@@ -132,12 +150,11 @@ class IndexScan(Instrumentation, Operateur):
 
         if not hasattr(self.index, "range_search"):
             raise TypeError(
-                f"L'opérateur '{self.op}' nécessite un BPlusTreeIndex "
-                "(range_search non disponible sur cet index)."
+                f"L'opérateur '{self.op}' nécessite un BPlusTreeIndex."
             )
 
-        _NEG_INF = -math.inf
         _POS_INF =  math.inf
+        _NEG_INF = -math.inf
 
         if self.op == ">=":
             return self.index.range_search(self.value, _POS_INF)
@@ -148,21 +165,12 @@ class IndexScan(Instrumentation, Operateur):
         if self.op == "<":
             return self.index.range_search(_NEG_INF, self.value)
 
-        if self.op == "!=":
-            # Pas adapté à un index hash — parcours complet de l'index
-            all_blocks: dict[int, None] = {}
-            for key in self._all_keys():
-                if key != self.value:
-                    for bn in self.index.search(key):
-                        all_blocks[bn] = None
-            return list(all_blocks)
-
         raise ValueError(f"Opérateur non supporté : '{self.op}'")
 
     # ── filtre intra-bloc ──────────────────────────────────────────────────
 
     def _matches(self, t: Tuple) -> bool:
-        """Vérifie si *t* satisfait la condition de recherche."""
+        """Vérifie si le tuple *t* satisfait la condition de recherche."""
         if self._col < 0 or self._col >= len(t.val):
             return False
         v = t.val[self._col]
@@ -170,22 +178,8 @@ class IndexScan(Instrumentation, Operateur):
             return self.value <= v <= self.high
         op = self.op
         if op == "==":  return v == self.value
-        if op == "!=":  return v != self.value
         if op == ">":   return v >  self.value
         if op == ">=":  return v >= self.value
         if op == "<":   return v <  self.value
         if op == "<=":  return v <= self.value
         return False
-
-    def _all_keys(self):
-        """Retourne toutes les clés distinctes de l'index (pour !=)."""
-        if hasattr(self.index, "_storage"):
-            storage = self.index._storage
-            storage.open()
-            seen = set()
-            for i in range(storage.table_size):
-                e = storage.get_entry(i)
-                if e is not None and e[0] not in seen:
-                    seen.add(e[0])
-                    yield e[0]
-            storage.close()
