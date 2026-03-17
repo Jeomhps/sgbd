@@ -5,15 +5,18 @@ from typing import Optional, Dict, List
 
 class HashJoin(Instrumentation, Operateur):
     """
-    Hash Join operator - more efficient than nested loop join for large datasets.
+    Simple Hash Join operator.
     
-    Uses a hash table to build an index on the right table, then probes with left tuples.
+    More efficient than nested loop join for large datasets.
+    Works in two phases:
+    1. Build: Create hash table from right table (inner table)
+    2. Probe: For each left tuple (outer table), find matches in hash table
     
     Args:
-        _left: Left input operator
-        _right: Right input operator
-        _left_col: Column index from left table to join on
-        _right_col: Column index from right table to join on
+        left: Left input operator (outer table for probing)
+        right: Right input operator (inner table for building hash)
+        left_col: Column index from left table to join on
+        right_col: Column index from right table to join on
     """
     
     def __init__(self, _left: Operateur, _right: Operateur, _left_col: int, _right_col: int):
@@ -24,12 +27,11 @@ class HashJoin(Instrumentation, Operateur):
         self.left_col = _left_col
         self.right_col = _right_col
         
-        # Hash table: key -> list of right tuples
+        # Hash table: join_key -> list of matching right tuples
         self.hash_table: Dict[int, List[Tuple]] = {}
-        self.left_tuple: Optional[Tuple] = None
-        self.match_index: int = 0
-        self.matches: List[Tuple] = []
-        self.built_hash_table: bool = False
+        self.current_left_tuple: Optional[Tuple] = None
+        self.current_match_index: int = 0
+        self.current_matches: List[Tuple] = []
     
     def open(self) -> None:
         self.start()
@@ -39,10 +41,9 @@ class HashJoin(Instrumentation, Operateur):
         # Build phase: Create hash table from right relation
         self._build_hash_table()
         
-        self.left_tuple = None
-        self.match_index = 0
-        self.matches = []
-        self.built_hash_table = True
+        self.current_left_tuple = None
+        self.current_match_index = 0
+        self.current_matches = []
         self.tuplesProduits = 0
         self.memoire = 0
         self.stop()
@@ -70,47 +71,58 @@ class HashJoin(Instrumentation, Operateur):
         self.right.open()
     
     def next(self) -> Optional[Tuple]:
+        """
+        Get next joined tuple using hash join algorithm.
+        
+        For each left tuple, use hash table to quickly find matching right tuples.
+        """
         self.start()
         
-        # Get next left tuple if needed
-        while self.left_tuple is None:
-            self.left_tuple = self.left.next()
-            if self.left_tuple is None:
+        # Get next left tuple if we don't have one
+        if self.current_left_tuple is None:
+            self.current_left_tuple = self.left.next()
+            if self.current_left_tuple is None:
+                # No more left tuples, we're done
                 self.stop()
                 return None
             
-            # Probe phase: Find matches in hash table
-            join_key = self.left_tuple.val[self.left_col]
-            self.matches = self.hash_table.get(join_key, [])
-            self.match_index = 0
+            # Probe phase: Find matches in hash table for this left tuple
+            join_key = self.current_left_tuple.val[self.left_col]
+            self.current_matches = self.hash_table.get(join_key, [])
+            self.current_match_index = 0
         
-        # Return joined tuples
-        if self.match_index < len(self.matches):
-            right_tuple = self.matches[self.match_index]
-            self.match_index += 1
+        # Return joined tuples for current left tuple
+        if self.current_match_index < len(self.current_matches):
+            right_tuple = self.current_matches[self.current_match_index]
+            self.current_match_index += 1
             
-            # Create joined tuple (left + right)
-            joined_size = len(self.left_tuple.val) + len(right_tuple.val)
-            joined_tuple = Tuple(joined_size)
-            
-            # Copy left values
-            for i in range(len(self.left_tuple.val)):
-                joined_tuple.val[i] = self.left_tuple.val[i]
-            
-            # Copy right values
-            for i in range(len(right_tuple.val)):
-                joined_tuple.val[len(self.left_tuple.val) + i] = right_tuple.val[i]
-            
+            # Create joined tuple by concatenating left + right
+            joined_tuple = self._create_joined_tuple(self.current_left_tuple, right_tuple)
             self.produit(joined_tuple)
             self.stop()
             return joined_tuple
         else:
-            # No more matches for current left tuple, get next left tuple
-            self.left_tuple = None
-            return self.next()  # Recursive call
+            # No more matches for current left tuple, move to next left tuple
+            self.current_left_tuple = None
+            return self.next()
+    
+    def _create_joined_tuple(self, left_tuple: Tuple, right_tuple: Tuple) -> Tuple:
+        """Helper method to concatenate two tuples into one."""
+        joined_size = len(left_tuple.val) + len(right_tuple.val)
+        joined_tuple = Tuple(joined_size)
+        
+        # Copy left tuple values
+        for i, value in enumerate(left_tuple.val):
+            joined_tuple.val[i] = value
+        
+        # Copy right tuple values (after left values)
+        for i, value in enumerate(right_tuple.val):
+            joined_tuple.val[len(left_tuple.val) + i] = value
+        
+        return joined_tuple
     
     def close(self) -> None:
+        """Clean up resources."""
         self.left.close()
         self.right.close()
         self.hash_table = {}
-        self.built_hash_table = False
