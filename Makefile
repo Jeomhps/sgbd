@@ -20,6 +20,8 @@ all:
 	@echo ""
 	@PYTHONPATH=. python3 tests/manual/TestAggregate.py
 	@echo ""
+	@PYTHONPATH=. python3 tests/manual/TestSQL.py
+	@echo ""
 	@echo "🎉 All tests completed!"
 
 # Run specific tests
@@ -46,6 +48,10 @@ join:
 aggregate:
 	@echo "🧪 Running Aggregate tests..."
 	@PYTHONPATH=. python3 tests/manual/TestAggregate.py
+
+sql:
+	@echo "🧪 Running SQL parser tests..."
+	@PYTHONPATH=. python3 tests/manual/TestSQL.py
 
 # Clean up
 clean:

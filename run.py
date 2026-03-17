@@ -11,6 +11,7 @@ Available tests:
   - fixed: Run Fixed data tests
   - join: Run Join tests
   - aggregate: Run Aggregate tests
+  - sql: Run SQL parser tests
   - clean: Clean cache files
 """
 
@@ -40,10 +41,11 @@ def main():
         tests = [
             'tests/manual/TestProject.py',
             'tests/manual/TestRestrict.py',
-            'tests/manual/TestRestrictChained.py', 
+            'tests/manual/TestRestrictChained.py',
             'tests/manual/TestRestrictChainedFixed.py',
             'tests/manual/TestJoin.py',
-            'tests/manual/TestAggregate.py'
+            'tests/manual/TestAggregate.py',
+            'tests/manual/TestSQL.py',
         ]
         for test in tests:
             print(f"\n📋 {test}:")
@@ -73,7 +75,11 @@ def main():
     elif test_name == 'aggregate':
         print("🧪 Running Aggregate tests...")
         run_command("python3 tests/manual/TestAggregate.py")
-        
+
+    elif test_name == 'sql':
+        print("🧪 Running SQL parser tests...")
+        run_command("python3 tests/manual/TestSQL.py")
+
     elif test_name == 'clean':
         print("🧹 Cleaning cache files...")
         run_command("rm -rf __pycache__ tests/__pycache__ operators/__pycache__ core/__pycache__")
@@ -81,7 +87,7 @@ def main():
         
     else:
         print(f"❌ Unknown test: {test_name}")
-        print("Available options: all, project, restrict, chained, fixed, join, aggregate, clean")
+        print("Available options: all, project, restrict, chained, fixed, join, aggregate, sql, clean")
 
 if __name__ == '__main__':
     main()
