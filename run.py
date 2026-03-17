@@ -10,6 +10,7 @@ Available tests:
   - chained: Run Chained restrict tests
   - fixed: Run Fixed data tests
   - join: Run Join tests
+  - aggregate: Run Aggregate tests
   - clean: Clean cache files
 """
 
@@ -41,7 +42,8 @@ def main():
             'tests/TestRestrict.py',
             'tests/TestRestrictChained.py', 
             'tests/TestRestrictChainedFixed.py',
-            'tests/TestJoin.py'
+            'tests/TestJoin.py',
+            'tests/TestAggregate.py'
         ]
         for test in tests:
             print(f"\n📋 {test}:")
@@ -67,6 +69,10 @@ def main():
     elif test_name == 'join':
         print("🧪 Running Join tests...")
         run_command("python3 tests/TestJoin.py")
+    
+    elif test_name == 'aggregate':
+        print("🧪 Running Aggregate tests...")
+        run_command("python3 tests/TestAggregate.py")
         
     elif test_name == 'clean':
         print("🧹 Cleaning cache files...")
@@ -75,7 +81,7 @@ def main():
         
     else:
         print(f"❌ Unknown test: {test_name}")
-        print("Available options: all, project, restrict, chained, fixed, join, clean")
+        print("Available options: all, project, restrict, chained, fixed, join, aggregate, clean")
 
 if __name__ == '__main__':
     main()

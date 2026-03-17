@@ -16,6 +16,10 @@ all:
 	@echo ""
 	@PYTHONPATH=. python3 tests/TestRestrictChainedFixed.py
 	@echo ""
+	@PYTHONPATH=. python3 tests/TestJoin.py
+	@echo ""
+	@PYTHONPATH=. python3 tests/TestAggregate.py
+	@echo ""
 	@echo "🎉 All tests completed!"
 
 # Run specific tests
@@ -39,6 +43,10 @@ join:
 	@echo "🧪 Running Join tests..."
 	@PYTHONPATH=. python3 tests/TestJoin.py
 
+aggregate:
+	@echo "🧪 Running Aggregate tests..."
+	@PYTHONPATH=. python3 tests/TestAggregate.py
+
 # Clean up
 clean:
 	@echo "🧹 Cleaning up..."
@@ -55,5 +63,6 @@ help:
 	@echo "  make chained   - Run Chained restrict tests"
 	@echo "  make fixed     - Run Fixed data tests"
 	@echo "  make join      - Run Join tests only"
+	@echo "  make aggregate - Run Aggregate tests only"
 	@echo "  make clean     - Clean up cache files"
 	@echo "  make help      - Show this help"
