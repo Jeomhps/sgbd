@@ -1,35 +1,34 @@
 """
-SQL Parser – builds an AST for a subset of SELECT statements:
+Simple SQL Parser – builds an AST for basic SELECT statements.
 
-    SELECT col, …  |  SELECT AGG(col), …  |  SELECT *
-    FROM   table [, table …]
-    [WHERE cond [AND cond …]]
-    [GROUP BY col [, col …]]
+Supports:
+    SELECT col, … | SELECT AGG(col), … | SELECT *
+    FROM table [, table …]
+    [WHERE condition [AND condition …]]
 
-Column references
------------------
-  TABLE.AN   – attribute N (1-indexed) of TABLE     e.g. T1.A2
-  N          – 0-indexed global column index        e.g.  2
-  AN         – attribute N (1-indexed), no table    e.g.  A2
+Column references:
+  TABLE.COL – qualified column reference
+  COL       – simple column name
+  N         – 0-indexed column index
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import List, Optional, Union
+from dataclasses import dataclass
+from typing import List, Union
 
 from sql.Lexer import Lexer, Token, TokenType, AGG_TYPES
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# AST node types
+# AST node types (simplified)
 # ──────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class ColumnRef:
     """A reference to a single column, optionally qualified by a table name."""
-    table: Optional[str]          # None when no qualifier
-    col:   Union[str, int]        # 'A1', 'A2', … or bare integer index
+    table: str | None          # None when no qualifier
+    col:   Union[str, int]     # Column name or index
 
     def __repr__(self) -> str:
         return f"{self.table}.{self.col}" if self.table else str(self.col)
@@ -37,9 +36,9 @@ class ColumnRef:
 
 @dataclass
 class AggExpr:
-    """An aggregate function call:  AVG(T1.A2)"""
+    """An aggregate function call: AVG(col), SUM(col), etc."""
     func: str          # 'AVG', 'SUM', 'MIN', 'MAX', 'COUNT'
-    col:  ColumnRef    # the column being aggregated (* is represented as col=0)
+    col:  ColumnRef    # The column being aggregated
 
     def __repr__(self) -> str:
         col_str = "*" if (self.func == "COUNT" and self.col.col == 0) else repr(self.col)
@@ -48,10 +47,10 @@ class AggExpr:
 
 @dataclass
 class Condition:
-    """A single WHERE predicate:  left op right"""
+    """A single WHERE predicate: left op right"""
     left:  ColumnRef
     op:    str                             # '==', '!=', '>', '<', '>=', '<='
-    right: Union[ColumnRef, str, int, float]
+    right: Union[ColumnRef, str, int, float]  # Literal value or column reference
 
     def is_join(self) -> bool:
         """True when both sides reference columns (equi-join condition)."""
@@ -67,7 +66,6 @@ class SelectQuery:
     columns:    List[Union[ColumnRef, AggExpr, str]]   # str == '*'
     tables:     List[str]
     conditions: List[Condition]
-    group_by:   List[ColumnRef] = field(default_factory=list)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -85,25 +83,30 @@ _OP_MAP: dict[TokenType, str] = {
 
 
 class ParseError(SyntaxError):
+    """Raised when SQL parsing fails."""
     pass
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Parser
+# Simple SQL Parser
 # ──────────────────────────────────────────────────────────────────────────────
 
 class SQLParser:
     """
-    Recursive-descent parser.  Entry point: ``parse()`` returns a SelectQuery.
+    Simple SQL parser using recursive descent.
+    
+    Entry point: parse() returns a SelectQuery AST.
+    Supports basic SELECT statements without GROUP BY.
     """
 
     def __init__(self, sql: str) -> None:
         self._tokens: list[Token] = Lexer(sql).tokens
         self._pos:    int         = 0
 
-    # ── public API ─────────────────────────────────────────────────────────
+    # ── Public API ────────────────────────────────────────────────────────────
 
     def parse(self) -> SelectQuery:
+        """Parse SQL query and return AST."""
         self._expect(TokenType.SELECT)
         columns = self._parse_select_list()
 
@@ -111,27 +114,22 @@ class SQLParser:
         tables = self._parse_table_list()
 
         conditions: list[Condition] = []
-        group_by:   list[ColumnRef] = []
 
+        # Parse WHERE clause if present
         if self._match(TokenType.WHERE):
             self._consume()
             conditions = self._parse_condition_list()
-
-        if self._match(TokenType.GROUP):
-            self._consume()
-            self._expect(TokenType.BY)
-            group_by = self._parse_col_ref_list()
 
         return SelectQuery(
             columns    = columns,
             tables     = tables,
             conditions = conditions,
-            group_by   = group_by,
         )
 
-    # ── SELECT list ────────────────────────────────────────────────────────
+    # ── SELECT list parsing ──────────────────────────────────────────────────
 
     def _parse_select_list(self) -> list:
+        """Parse comma-separated list of SELECT items."""
         items = [self._parse_select_item()]
         while self._match(TokenType.COMMA):
             self._consume()
@@ -139,6 +137,7 @@ class SQLParser:
         return items
 
     def _parse_select_item(self):
+        """Parse a single SELECT item: * | AGG(col) | col_ref"""
         tok = self._peek()
 
         # SELECT *
@@ -148,33 +147,41 @@ class SQLParser:
 
         # SELECT AGG(col)
         if tok.type in AGG_TYPES:
-            func = tok.value
-            self._consume()
-            self._expect(TokenType.LPAREN)
-            # COUNT(*) special case
-            if self._match(TokenType.STAR):
-                self._consume()
-                col = ColumnRef(table=None, col=0)
-            else:
-                col = self._parse_col_ref()
-            self._expect(TokenType.RPAREN)
-            return AggExpr(func=func, col=col)
+            return self._parse_agg_expr()
 
         # SELECT col_ref
         return self._parse_col_ref()
 
-    # ── FROM list ──────────────────────────────────────────────────────────
+    def _parse_agg_expr(self) -> AggExpr:
+        """Parse aggregate function: AVG(col), SUM(col), etc."""
+        func = self._peek().value
+        self._consume()  # Consume function name
+        self._expect(TokenType.LPAREN)
+        
+        # COUNT(*) special case
+        if self._match(TokenType.STAR):
+            self._consume()
+            col = ColumnRef(table=None, col=0)
+        else:
+            col = self._parse_col_ref()
+        
+        self._expect(TokenType.RPAREN)
+        return AggExpr(func=func, col=col)
+
+    # ── FROM list parsing ───────────────────────────────────────────────────
 
     def _parse_table_list(self) -> list[str]:
+        """Parse comma-separated list of table names."""
         tables = [self._expect(TokenType.IDENT).value]
         while self._match(TokenType.COMMA):
             self._consume()
             tables.append(self._expect(TokenType.IDENT).value)
         return tables
 
-    # ── WHERE conditions ───────────────────────────────────────────────────
+    # ── WHERE conditions parsing ──────────────────────────────────────────
 
     def _parse_condition_list(self) -> list[Condition]:
+        """Parse AND-separated list of conditions."""
         conds = [self._parse_condition()]
         while self._match(TokenType.AND):
             self._consume()
@@ -182,6 +189,7 @@ class SQLParser:
         return conds
 
     def _parse_condition(self) -> Condition:
+        """Parse a single condition: col op value"""
         left = self._parse_col_ref()
 
         tok = self._peek()
@@ -198,27 +206,24 @@ class SQLParser:
     def _parse_value_or_col_ref(self):
         """Parse the right-hand side of a condition: literal or column ref."""
         tok = self._peek()
+        
+        # String literal
         if tok.type == TokenType.STRING:
             self._consume()
             return tok.value
+        
+        # Numeric literal
         if tok.type == TokenType.NUMBER:
             self._consume()
             return tok.value
+        
         # Must be a column reference
         return self._parse_col_ref()
 
-    # ── GROUP BY list ──────────────────────────────────────────────────────
-
-    def _parse_col_ref_list(self) -> list[ColumnRef]:
-        cols = [self._parse_col_ref()]
-        while self._match(TokenType.COMMA):
-            self._consume()
-            cols.append(self._parse_col_ref())
-        return cols
-
-    # ── Column reference  TABLE.AN  |  AN  |  N ───────────────────────────
+    # ── Column reference parsing ────────────────────────────────────────────
 
     def _parse_col_ref(self) -> ColumnRef:
+        """Parse column reference: TABLE.COL | COL | N"""
         tok = self._peek()
 
         # Bare integer: 0-indexed global column
@@ -254,17 +259,21 @@ class SQLParser:
     # ── Token stream helpers ───────────────────────────────────────────────
 
     def _peek(self) -> Token:
+        """Look at current token without consuming it."""
         return self._tokens[self._pos]
 
     def _consume(self) -> Token:
+        """Consume and return current token."""
         tok = self._tokens[self._pos]
         self._pos += 1
         return tok
 
     def _match(self, *types: TokenType) -> bool:
+        """Check if current token matches any of the given types."""
         return self._peek().type in types
 
     def _expect(self, ttype: TokenType) -> Token:
+        """Consume current token if it matches expected type, else raise error."""
         tok = self._peek()
         if tok.type != ttype:
             raise ParseError(
