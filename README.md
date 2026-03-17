@@ -1,1 +1,147 @@
-# sgbd
+# MiniSGBD - Mini Database System
+
+A lightweight relational database system implementing core relational algebra operators.
+
+## 🗂️ Project Structure
+
+```
+miniSGBD/
+├── core/          # Base classes and data structures (provided)
+├── operators/     # Database operators (Project, Restrict, Join, Aggregate)
+├── tests/         # Test suite for all operators
+├── run.py         # Easy test runner
+├── Makefile       # Alternative test runner
+└── README.md      # This file
+```
+
+## 🚀 Features
+
+### Database Operators
+
+| Operator | Description | SQL Equivalent |
+|----------|-------------|----------------|
+| **Project** | Select specific columns | `SELECT col1, col2 FROM table` |
+| **Restrict** | Filter rows by condition | `SELECT * FROM table WHERE col > 50` |
+| **Join** | Combine tables on key | `SELECT * FROM A JOIN B ON A.id = B.id` |
+| **Aggregate** | Compute aggregations | `SELECT SUM(col), AVG(col) FROM table` |
+
+### Aggregation Functions
+
+- `SUM` - Sum of values
+- `AVG` - Average of values  
+- `MIN` - Minimum value
+- `MAX` - Maximum value
+- `COUNT` - Count of rows
+- `GROUP BY` - Grouped aggregations
+
+## 🧪 Testing
+
+### Run All Tests
+```bash
+make test
+# or
+python3 run.py
+```
+
+### Run Specific Tests
+```bash
+make project      # Test Project operator
+make restrict     # Test Restrict operator
+make join         # Test Join operator
+make aggregate    # Test Aggregate operator
+make clean        # Clean cache files
+```
+
+### Test Output Example
+```
+=== Testing Aggregate Operator ===
+Test 1: SUM of quantities
+SUM result: 21 (expected: 5+3+7+2+4=21)
+
+Test 2: GROUP BY product_id with AVG(price)
+Product 101: Average price = 10.00
+Product 102: Average price = 15.00
+✅ All tests passed!
+```
+
+## 📋 Usage Examples
+
+### Basic Operations
+```python
+from core.TableMemoire import TableMemoire
+from core.FullScanTableMemoire import FullScanTableMemoire
+from operators.Project import Project
+from operators.Restrict import Restrict
+from operators.Aggregate import Aggregate
+
+# Create and populate table
+table = TableMemoire.randomize(3, 100, 10)
+scan = FullScanTableMemoire(table)
+
+# Project operator (SELECT col0, col2)
+project = Project(scan, [0, 2])
+
+# Restrict operator (WHERE col1 > 50)
+restrict = Restrict(scan, 1, 50, ">")
+
+# Aggregate operator (SELECT AVG(col2))
+agg = Aggregate(scan, 2, 'AVG')
+```
+
+### SQL-like Operations
+```python
+# SELECT SUM(sales) FROM orders
+sum_agg = Aggregate(scan, 2, 'SUM')
+
+# SELECT product_id, AVG(price) FROM products GROUP BY category
+group_agg = Aggregate(scan, 3, 'AVG', [1])  # Group by column 1
+
+# SELECT * FROM employees JOIN departments ON dept_id
+join = Join(emp_scan, dept_scan, 2, 0)  # emp.dept_id = dept.id
+```
+
+## 🔧 Technical Details
+
+### Operator Pipeline Pattern
+All operators follow the same interface:
+- `open()` - Initialize the operator
+- `next()` - Get next tuple (returns `Tuple` or `None`)
+- `close()` - Clean up resources
+
+### Memory Management
+- Operators track memory usage via `Instrumentation`
+- Statistics include tuples produced, memory used, and execution time
+- Proper resource cleanup in `close()` methods
+
+### Type Safety
+- Base classes include type hints
+- Child classes inherit type signatures automatically
+- Clean separation between operator logic and data structures
+
+## 📚 Learning Resources
+
+This project demonstrates:
+- **Relational Algebra** fundamentals
+- **Operator Pipeline** patterns
+- **Memory Management** in data processing
+- **Test-Driven Development** approach
+- **SQL Query Execution** concepts
+
+## 🤝 Contributing
+
+1. Add new operators to `operators/` directory
+2. Create corresponding tests in `tests/`
+3. Update `run.py` and `Makefile` with new test options
+4. Run `make test` to verify everything works
+
+## 📊 Performance
+
+All operators include instrumentation:
+- Execution time tracking
+- Memory usage monitoring
+- Tuple count statistics
+
+Example output:
+```
+Aggregate1 -- tuples produits: 1 -- mémoire utilisée : 1 -- Time: 0.000012
+```
