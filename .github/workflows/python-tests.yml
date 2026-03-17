@@ -27,6 +27,7 @@ jobs:
         
     - name: Install dependencies with uv
       run: |
+        uv venv
         uv pip install pytest
         
     - name: Run unit tests
