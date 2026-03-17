@@ -8,9 +8,14 @@ A lightweight relational database system implementing core relational algebra op
 miniSGBD/
 ├── core/          # Base classes and data structures
 ├── operators/     # Database operators (Project, Restrict, Join, Aggregate)
+├── sql/           # SQL parsing and execution
 ├── tests/         # Unit tests (pytest)
 │   ├── core/      # Core component tests
 │   └── operators/ # Operator tests
+├── tools/         # SQL interpreter and utilities
+│   ├── sql_interpreter.py
+│   ├── create_sample_data.py
+│   └── SQL_INTERPRETER.md
 ├── manual_tests/  # Manual demonstration tests
 ├── pyproject.toml # Project configuration with uv dependencies
 └── README.md      # This file
@@ -59,10 +64,13 @@ uv run pytest -x
 ### Manual Tests (Demonstration)
 For visual demonstration and learning:
 ```bash
-# Run manual integration tests
-python manual_tests/TestDiskIntegration.py
-python manual_tests/TestProject.py
-python manual_tests/TestRestrict.py
+# Run manual integration tests (set PYTHONPATH to find core modules)
+PYTHONPATH=. uv run python manual_tests/TestDiskIntegration.py
+PYTHONPATH=. uv run python manual_tests/TestProject.py
+PYTHONPATH=. uv run python manual_tests/TestRestrict.py
+
+# Or run any manual test
+PYTHONPATH=. uv run python manual_tests/<test_name>.py
 ```
 
 ### Test Organization
@@ -142,6 +150,34 @@ All operators follow the same interface:
 - Child classes inherit type signatures automatically
 - Clean separation between operator logic and data structures
 
+## 🎯 SQL Interpreter
+
+The project now includes a **fully functional SQL interpreter** that lets you interactively query disk-based tables!
+
+### Quick Start
+
+```bash
+# Create sample data
+uv run python tools/create_sample_data.py
+
+# Launch interactive SQL interpreter
+uv run python tools/sql_interpreter.py
+
+# Example session:
+miniSGBD> LOAD employees employees.dat
+miniSGBD> SELECT * FROM employees WHERE 2 > 50000
+miniSGBD> SELECT e.0, d.1 FROM employees e, departments d WHERE e.3 = d.0
+```
+
+**Features:**
+- ✅ Interactive REPL with command history
+- ✅ Full SQL parsing and execution pipeline
+- ✅ Disk-based table loading
+- ✅ Query planning with visual execution plans
+- ✅ Support for SELECT, WHERE, JOIN, GROUP BY, aggregations
+
+See [tools/SQL_INTERPRETER.md](tools/SQL_INTERPRETER.md) for complete documentation.
+
 ## 📚 Learning Resources
 
 This project demonstrates:
@@ -150,6 +186,7 @@ This project demonstrates:
 - **Memory Management** in data processing
 - **Test-Driven Development** approach
 - **SQL Query Execution** concepts
+- **Parser/Planner/Executor** architecture
 
 ## 🤝 Contributing
 
