@@ -22,7 +22,8 @@ miniSGBD/
 |----------|-------------|----------------|
 | **Project** | Select specific columns | `SELECT col1, col2 FROM table` |
 | **Restrict** | Filter rows by condition | `SELECT * FROM table WHERE col > 50` |
-| **Join** | Combine tables on key | `SELECT * FROM A JOIN B ON A.id = B.id` |
+| **Join** | Combine tables (nested loop) | `SELECT * FROM A JOIN B ON A.id = B.id` |
+| **HashJoin** | Combine tables (hash-based) | `SELECT * FROM A JOIN B ON A.id = B.id` |
 | **Aggregate** | Compute aggregations | `SELECT SUM(col), AVG(col) FROM table` |
 
 ### Aggregation Functions
@@ -160,6 +161,20 @@ This project demonstrates:
 
 ## 📊 Performance
 
+### Join Algorithm Comparison
+
+| Algorithm | Complexity | Memory Usage | Best For |
+|-----------|------------|--------------|----------|
+| **Nested Loop Join** | O(n×m) | O(1) | Small datasets, simple implementation |
+| **Hash Join** | O(n+m) | O(m) | Large datasets, better performance |
+
+### Hash Join Advantages
+- **Faster**: O(n+m) vs O(n×m) for nested loop
+- **Scalable**: Handles large datasets efficiently
+- **Hash-based**: Uses hash table for O(1) lookups
+- **Two-phase**: Build hash table, then probe
+
+### Performance Monitoring
 All operators include instrumentation:
 - Execution time tracking
 - Memory usage monitoring
@@ -167,5 +182,5 @@ All operators include instrumentation:
 
 Example output:
 ```
-Aggregate1 -- tuples produits: 1 -- mémoire utilisée : 1 -- Time: 0.000012
+HashJoin1 -- tuples produits: 1000 -- mémoire utilisée: 48 -- Time: 0.0012
 ```
