@@ -1,16 +1,21 @@
+"""
+Simple SQL Lexer – tokenizes SQL queries into tokens.
+
+Supports basic SQL syntax for SELECT statements with WHERE clauses and aggregations.
+"""
+
 from enum import Enum, auto
 from dataclasses import dataclass
 from typing import Any
 
 
 class TokenType(Enum):
-    # DML keywords
+    """Token types for SQL parsing."""
+    # SQL keywords
     SELECT = auto()
     FROM   = auto()
     WHERE  = auto()
     AND    = auto()
-    GROUP  = auto()
-    BY     = auto()
 
     # Aggregate functions
     AVG   = auto()
@@ -34,19 +39,20 @@ class TokenType(Enum):
     RPAREN  = auto()
     STAR    = auto()
 
-    # Literals / names
-    IDENT  = auto()
-    NUMBER = auto()
-    STRING = auto()
+    # Literals
+    IDENT  = auto()   # Table/column names
+    NUMBER = auto()   # Numeric literals
+    STRING = auto()   # String literals
 
-    EOF = auto()
+    EOF = auto()      # End of input
 
 
 @dataclass
 class Token:
-    type:  TokenType
-    value: Any
-    pos:   int
+    """A single token from the SQL input."""
+    type:  TokenType   # Token type
+    value: Any        # Token value (e.g., "SELECT", 42, "employees")
+    pos:   int        # Position in original SQL string
 
 
 # Reserved words mapped to their token type.
@@ -56,8 +62,6 @@ _KEYWORDS: dict[str, TokenType] = {
     "FROM":   TokenType.FROM,
     "WHERE":  TokenType.WHERE,
     "AND":    TokenType.AND,
-    "GROUP":  TokenType.GROUP,
-    "BY":     TokenType.BY,
     "AVG":    TokenType.AVG,
     "SUM":    TokenType.SUM,
     "MIN":    TokenType.MIN,

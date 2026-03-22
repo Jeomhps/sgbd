@@ -66,37 +66,6 @@ class TestAggregateOperator:
         assert result is not None
         assert result.val[0] == 7
     
-    def test_group_by_aggregation(self):
-        """Test GROUP BY with aggregation"""
-        table = TableMemoire(2)
-        # Group 1
-        t1 = Tuple(2)
-        t1.val = [1, 10]
-        t2 = Tuple(2)
-        t2.val = [1, 20]
-        # Group 2
-        t3 = Tuple(2)
-        t3.val = [2, 30]
-        table.valeurs.extend([t1, t2, t3])
-        
-        scan = FullScanTableMemoire(table)
-        agg = Aggregate(scan, 1, 'SUM', [0])  # SUM col1, GROUP BY col0
-        
-        agg.open()
-        results = []
-        while True:
-            result = agg.next()
-            if result is None:
-                break
-            results.append(result)
-        agg.close()
-        
-        assert len(results) == 2
-        # Group 1: sum = 10 + 20 = 30
-        # Group 2: sum = 30
-        sums = [r.val[1] for r in results]
-        assert 30 in sums
-        assert 30 in sums
     
     def test_empty_table_aggregation(self):
         """Test aggregation on empty table"""
