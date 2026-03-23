@@ -12,7 +12,6 @@ class Instrumentation:
             
         self.tuplesProduits = 0
         self.memoire = 0
-        self.memoire = 0
         self.time = 0
         self.startTime = 0
         self.stopTime = 0

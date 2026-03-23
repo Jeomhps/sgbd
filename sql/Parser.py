@@ -66,6 +66,7 @@ class SelectQuery:
     columns:    List[Union[ColumnRef, AggExpr, str]]   # str == '*'
     tables:     List[str]
     conditions: List[Condition]
+    group_by:   List[ColumnRef] = None
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -114,16 +115,24 @@ class SQLParser:
         tables = self._parse_table_list()
 
         conditions: list[Condition] = []
+        group_by: list[ColumnRef] | None = None
 
         # Parse WHERE clause if present
         if self._match(TokenType.WHERE):
             self._consume()
             conditions = self._parse_condition_list()
 
+        # Parse GROUP BY clause if present
+        if self._match(TokenType.GROUP):
+            self._consume()
+            self._expect(TokenType.BY)
+            group_by = self._parse_group_by_list()
+
         return SelectQuery(
             columns    = columns,
             tables     = tables,
             conditions = conditions,
+            group_by   = group_by,
         )
 
     # ── SELECT list parsing ──────────────────────────────────────────────────
@@ -177,6 +186,16 @@ class SQLParser:
             self._consume()
             tables.append(self._expect(TokenType.IDENT).value)
         return tables
+
+    # ── GROUP BY parsing ────────────────────────────────────────────────────
+
+    def _parse_group_by_list(self) -> list[ColumnRef]:
+        """Parse comma-separated list of GROUP BY columns."""
+        cols = [self._parse_col_ref()]
+        while self._match(TokenType.COMMA):
+            self._consume()
+            cols.append(self._parse_col_ref())
+        return cols
 
     # ── WHERE conditions parsing ──────────────────────────────────────────
 

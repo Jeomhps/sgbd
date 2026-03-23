@@ -12,10 +12,12 @@ from typing import Any
 class TokenType(Enum):
     """Token types for SQL parsing."""
     # SQL keywords
-    SELECT = auto()
-    FROM   = auto()
-    WHERE  = auto()
-    AND    = auto()
+    SELECT  = auto()
+    FROM    = auto()
+    WHERE   = auto()
+    AND     = auto()
+    GROUP   = auto()
+    BY      = auto()
 
     # Aggregate functions
     AVG   = auto()
@@ -62,6 +64,8 @@ _KEYWORDS: dict[str, TokenType] = {
     "FROM":   TokenType.FROM,
     "WHERE":  TokenType.WHERE,
     "AND":    TokenType.AND,
+    "GROUP":  TokenType.GROUP,
+    "BY":     TokenType.BY,
     "AVG":    TokenType.AVG,
     "SUM":    TokenType.SUM,
     "MIN":    TokenType.MIN,

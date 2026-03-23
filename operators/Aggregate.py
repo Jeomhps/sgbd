@@ -1,113 +1,103 @@
 from core.Instrumentation import Instrumentation
 from core.Operateur import Operateur
 from core.Tuple import Tuple
-from typing import Optional, Union
+from typing import Optional
 
 class Aggregate(Instrumentation, Operateur):
     """
-    Simple Aggregate operator supporting AVG, SUM, MIN, MAX, COUNT operations.
-    
-    Computes a single aggregation result over all input tuples.
-    For example: SUM(salary), AVG(age), COUNT(*), etc.
-    
-    Args:
-        _in: Input operator providing tuples to aggregate
-        _agg_col: Column index to aggregate on
-        _agg_func: Aggregation function ('AVG', 'SUM', 'MIN', 'MAX', 'COUNT')
+    Agregation : AVG, SUM, MIN, MAX, COUNT.
+
+    Sans group_by : retourne un seul tuple avec le resultat.
+    Avec group_by : retourne un tuple (cle_groupe, resultat) par groupe.
     """
-    
-    def __init__(self, _in: Operateur, _agg_col: int, _agg_func: str):
+
+    VALID_FUNCS = ('AVG', 'SUM', 'MIN', 'MAX', 'COUNT')
+
+    def __init__(self, _in, _agg_col, _agg_func, _group_cols=None):
         super().__init__("Aggregate" + str(Instrumentation.number))
         Instrumentation.number += 1
         self.child = _in
         self.agg_col = _agg_col
         self.agg_func = _agg_func.upper()
-        
-        # Validate aggregation function
-        valid_funcs = ['AVG', 'SUM', 'MIN', 'MAX', 'COUNT']
-        if self.agg_func not in valid_funcs:
-            raise ValueError(f"Invalid aggregation function: {self.agg_func}. Must be one of: {valid_funcs}")
-        
-        # Simple data structures for aggregation
-        self.all_values = []  # Store all values to aggregate
-        self.processed = False  # Track if we've processed all tuples
-        self.result_returned = False  # Track if we've returned the result
-    
-    def open(self) -> None:
-        """Initialize the aggregation operation."""
+        self.group_cols = _group_cols  # liste d'indices de colonnes de regroupement
+
+        if self.agg_func not in self.VALID_FUNCS:
+            raise ValueError(f"Fonction inconnue: {self.agg_func}. Valides: {self.VALID_FUNCS}")
+
+        self._results = []
+        self._result_index = 0
+
+    def open(self):
         self.start()
         self.child.open()
-        self.all_values = []
-        self.processed = False
-        self.result_returned = False
+        self._results = []
+        self._result_index = 0
         self.tuplesProduits = 0
         self.memoire = 0
         self.stop()
-    
+
     def next(self) -> Optional[Tuple]:
-        """
-        Compute and return the aggregation result.
-        
-        Returns a single tuple with the aggregation result, or None if already returned.
-        """
         self.start()
-        
-        # Phase 1: Collect all data if not already processed
-        if not self.processed:
-            self._collect_all_values()
-            self.processed = True
-        
-        # Phase 2: Return the single aggregation result
-        if self.result_returned:
-            # Already returned the result, we're done
+
+        # Collecter et calculer au premier appel
+        if not self._results:
+            self._compute()
+
+        if self._result_index >= len(self._results):
             self.stop()
             return None
-        
-        self.result_returned = True
-        
-        # Compute the aggregation based on the function
-        result_value = self._compute_aggregation()
-        
-        # Create result tuple with single value
-        result_tuple = Tuple(1)
-        result_tuple.val[0] = result_value
-        
-        self.produit(result_tuple)
+
+        t = self._results[self._result_index]
+        self._result_index += 1
+        self.produit(t)
         self.stop()
-        return result_tuple
-    
-    def _collect_all_values(self) -> None:
-        """Collect all values from input tuples for aggregation."""
+        return t
+
+    def _compute(self):
+        """Collecte les tuples et calcule le(s) resultat(s)."""
+        # Collecter tous les tuples
+        all_tuples = []
         while True:
-            tuple_data = self.child.next()
-            if tuple_data is None:
+            t = self.child.next()
+            if t is None:
                 break
-            
-            # Extract the value to aggregate from the specified column
-            agg_value = tuple_data.val[self.agg_col]
-            self.all_values.append(agg_value)
-    
-    def _compute_aggregation(self) -> Union[int, float]:
-        """Compute the aggregation result based on the function."""
-        if not self.all_values:
-            return 0  # Default for empty input
-        
-        if self.agg_func == 'COUNT':
-            return len(self.all_values)
-        elif self.agg_func == 'SUM':
-            return sum(self.all_values)
-        elif self.agg_func == 'AVG':
-            return sum(self.all_values) / len(self.all_values)
-        elif self.agg_func == 'MIN':
-            return min(self.all_values)
-        elif self.agg_func == 'MAX':
-            return max(self.all_values)
+            all_tuples.append(t)
+
+        if self.group_cols:
+            # Regrouper par cles
+            groups = {}
+            for t in all_tuples:
+                key = tuple(t.val[c] for c in self.group_cols)
+                if key not in groups:
+                    groups[key] = []
+                groups[key].append(t.val[self.agg_col])
+
+            for key, values in groups.items():
+                result_val = self._aggregate(values)
+                result = Tuple(len(key) + 1)
+                for i, k in enumerate(key):
+                    result.val[i] = k
+                result.val[len(key)] = result_val
+                self._results.append(result)
         else:
+            # Pas de regroupement : un seul resultat
+            values = [t.val[self.agg_col] for t in all_tuples]
+            result = Tuple(1)
+            result.val[0] = self._aggregate(values)
+            self._results.append(result)
+
+    def _aggregate(self, values):
+        """Calcule le resultat de l'agregation sur une liste de valeurs."""
+        if not values:
             return 0
-    
-    def close(self) -> None:
-        """Clean up resources."""
+        if self.agg_func == 'COUNT': return len(values)
+        if self.agg_func == 'SUM':   return sum(values)
+        if self.agg_func == 'AVG':   return sum(values) / len(values)
+        if self.agg_func == 'MIN':   return min(values)
+        if self.agg_func == 'MAX':   return max(values)
+        return 0
+
+    def close(self):
         self.child.close()
-        self.all_values = []
-        self.processed = False
-        self.result_returned = False
+        self._results = []
+        self._result_index = 0

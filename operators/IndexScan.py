@@ -1,24 +1,15 @@
 """
-IndexScan – opérateur d'accès par index (orienté blocs).
+IndexScan — acces a une table via un index (par bloc).
 
-Se substitue à FullScanTableDisque quand un index est disponible.
-Au lieu de lire tous les blocs, il consulte l'index pour obtenir les
-numéros de blocs correspondants, lit chaque bloc directement, puis filtre
-les tuples à l'intérieur.
+Au lieu de lire tous les blocs (full scan), interroge l'index pour obtenir
+les numeros de blocs pertinents, lit chaque bloc et filtre les tuples.
 
-Opérateurs supportés
---------------------
-  ==          → index.search(value)           (tous les index)
-  >, >=, <, <=, range → index.range_search()  (B+Tree uniquement)
-
-Pipeline
---------
-    IndexScan(table, index, val, op='==')
-        └── [Project / Restrict / …]
+Operateurs supportes :
+  ==           -> index.search(value)        (tous les index)
+  >, >=, <, <= -> index.range_search()       (B+Tree uniquement)
 """
 
 from __future__ import annotations
-
 import math
 from typing import List, Optional
 
@@ -28,68 +19,39 @@ from core.Tuple import Tuple
 
 
 class IndexScan(Instrumentation, Operateur):
-    """
-    Accès à une table via un index pré-construit (accès direct par bloc).
+    """Acces a une table via un index pre-construit."""
 
-    Paramètres
-    ----------
-    table :
-        TableDisque ou TableMemoire.  Doit exposer ``get_block(block_no)``.
-    index :
-        StaticHashIndex | DynamicHashIndex | BPlusTreeIndex.
-    value :
-        Valeur de recherche.
-    op : str
-        Opérateur de comparaison : ``'=='``, ``'!='``, ``'>'``, ``'>='``,
-        ``'<'``, ``'<='``.
-    high :
-        Borne supérieure pour une recherche par intervalle (BPlusTreeIndex).
-    """
-
-    def __init__(
-        self,
-        table,
-        index,
-        value,
-        op:   str  = "==",
-        high        = None,
-    ) -> None:
+    def __init__(self, table, index, value, op="==", high=None):
         super().__init__("IndexScan" + str(Instrumentation.number))
         Instrumentation.number += 1
-        self.table  = table
-        self.index  = index
-        self.value  = value
-        self.op     = op
-        self.high   = high
+        self.table = table
+        self.index = index
+        self.value = value
+        self.op = op
+        self.high = high
+        self._col = -1
+        self._block_numbers: List[int] = []
+        self._block_pos = 0
+        self._current_block: List[Tuple] = []
+        self._slot = 0
 
-        # Colonne indexée (pour filtrer dans le bloc)
-        self._col: int = -1
-
-        # État de l'itération par blocs
-        self._block_numbers:   List[int]   = []
-        self._block_pos:       int         = 0
-        self._current_block:   List[Tuple] = []
-        self._slot:            int         = 0
-
-    # ── interface Operateur ────────────────────────────────────────────────
-
-    def open(self) -> None:
+    def open(self):
         self.start()
-        self.table.open()
-        self._col           = self.index._col
+        if hasattr(self.table, "open"):
+            self.table.open()
+        self._col = self.index._col
         self._block_numbers = self._query_index()
-        self._block_pos     = 0
+        self._block_pos = 0
         self._current_block = []
-        self._slot          = 0
+        self._slot = 0
         self.tuplesProduits = 0
-        self.memoire        = 0
+        self.memoire = 0
         self.stop()
 
     def next(self) -> Optional[Tuple]:
         self.start()
-
         while True:
-            # ── (a) Émettre le prochain tuple correspondant dans le bloc courant ──
+            # Emettre le prochain tuple correspondant dans le bloc courant
             while self._slot < len(self._current_block):
                 t = self._current_block[self._slot]
                 self._slot += 1
@@ -98,94 +60,47 @@ class IndexScan(Instrumentation, Operateur):
                     self.stop()
                     return t
 
-            # ── (b) Bloc courant épuisé → passer au suivant ──
+            # Bloc epuise -> passer au suivant
             if self._block_pos >= len(self._block_numbers):
                 self.stop()
                 return None
+            self._current_block = self.table.get_block(self._block_numbers[self._block_pos])
+            self._block_pos += 1
+            self._slot = 0
 
-            block_no            = self._block_numbers[self._block_pos]
-            self._block_pos    += 1
-            self._current_block = self.table.get_block(block_no)
-            self._slot          = 0
-
-    def close(self) -> None:
-        self.table.close()
+    def close(self):
+        if hasattr(self.table, "close"):
+            self.table.close()
         self._block_numbers = []
         self._current_block = []
-        self._block_pos     = 0
-        self._slot          = 0
-
-    # ── résolution de l'index ──────────────────────────────────────────────
 
     def _query_index(self) -> List[int]:
-        """Interroge l'index selon self.op et retourne les n° de blocs."""
-
+        """Interroge l'index et retourne les n° de blocs a lire."""
         if self.high is not None:
-            if not hasattr(self.index, "range_search"):
-                raise TypeError(
-                    "La recherche par intervalle nécessite un BPlusTreeIndex."
-                )
             return self.index.range_search(self.value, self.high)
-
         if self.op == "==":
             return self.index.search(self.value)
 
         if not hasattr(self.index, "range_search"):
-            raise TypeError(
-                f"L'opérateur '{self.op}' nécessite un BPlusTreeIndex "
-                "(range_search non disponible sur cet index)."
-            )
+            raise TypeError(f"L'operateur '{self.op}' necessite un BPlusTreeIndex.")
 
-        _NEG_INF = -math.inf
-        _POS_INF =  math.inf
-
-        if self.op == ">=":
-            return self.index.range_search(self.value, _POS_INF)
-        if self.op == ">":
-            return self.index.range_search(self.value, _POS_INF)
-        if self.op == "<=":
-            return self.index.range_search(_NEG_INF, self.value)
-        if self.op == "<":
-            return self.index.range_search(_NEG_INF, self.value)
-
-        if self.op == "!=":
-            # Pas adapté à un index hash — parcours complet de l'index
-            all_blocks: dict[int, None] = {}
-            for key in self._all_keys():
-                if key != self.value:
-                    for bn in self.index.search(key):
-                        all_blocks[bn] = None
-            return list(all_blocks)
-
-        raise ValueError(f"Opérateur non supporté : '{self.op}'")
-
-    # ── filtre intra-bloc ──────────────────────────────────────────────────
+        if self.op in (">=", ">"):
+            return self.index.range_search(self.value, math.inf)
+        if self.op in ("<=", "<"):
+            return self.index.range_search(-math.inf, self.value)
+        raise ValueError(f"Operateur non supporte : '{self.op}'")
 
     def _matches(self, t: Tuple) -> bool:
-        """Vérifie si *t* satisfait la condition de recherche."""
+        """Verifie si le tuple satisfait la condition de recherche."""
         if self._col < 0 or self._col >= len(t.val):
             return False
         v = t.val[self._col]
         if self.high is not None:
             return self.value <= v <= self.high
-        op = self.op
-        if op == "==":  return v == self.value
-        if op == "!=":  return v != self.value
-        if op == ">":   return v >  self.value
-        if op == ">=":  return v >= self.value
-        if op == "<":   return v <  self.value
-        if op == "<=":  return v <= self.value
+        if self.op == "==": return v == self.value
+        if self.op == "!=": return v != self.value
+        if self.op == ">":  return v > self.value
+        if self.op == ">=": return v >= self.value
+        if self.op == "<":  return v < self.value
+        if self.op == "<=": return v <= self.value
         return False
-
-    def _all_keys(self):
-        """Retourne toutes les clés distinctes de l'index (pour !=)."""
-        if hasattr(self.index, "_storage"):
-            storage = self.index._storage
-            storage.open()
-            seen = set()
-            for i in range(storage.table_size):
-                e = storage.get_entry(i)
-                if e is not None and e[0] not in seen:
-                    seen.add(e[0])
-                    yield e[0]
-            storage.close()
