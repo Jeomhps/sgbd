@@ -173,6 +173,16 @@ class TableDisque:
         else:
             return None
     
+    def get_block(self, block_no: int) -> list:
+        """
+        Retourne tous les tuples (non-None) du bloc *block_no*.
+
+        Accès direct par numéro de bloc — utilisé par GetWithIndex et les
+        opérateurs qui reçoivent un numéro de bloc depuis un index.
+        """
+        raw = self._read_block(block_no)
+        return [t for t in raw if t is not None]
+
     def __del__(self):
         """Destructor to ensure file is closed."""
         self.close()

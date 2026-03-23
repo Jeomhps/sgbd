@@ -73,13 +73,16 @@ class StaticHashIndex:
         """Parcourt *table*, indexe la colonne *col*, écrit sur disque."""
         self._col  = col
         self._size = 0
+        block_size = self._get_block_size(table)
 
         # 1. Accumuler les entrées dans des seaux mémoire temporaires
+        # Chaque entrée stocke (clé, n° de bloc) au lieu de (clé, indice tuple).
         buckets: list[list[tuple]] = [[] for _ in range(self.nb_buckets)]
         for idx, t in enumerate(self._iter_table(table)):
-            key = t.val[col]
-            b   = self._bucket_id(key)
-            buckets[b].append((key, idx))
+            key      = t.val[col]
+            b        = self._bucket_id(key)
+            block_no = idx // block_size
+            buckets[b].append((key, block_no))
             self._size += 1
 
         # 2. Construire le répertoire et la liste plate des entrées
@@ -105,19 +108,23 @@ class StaticHashIndex:
     # ── recherche ──────────────────────────────────────────────────────────
 
     def search(self, value) -> List[int]:
-        """Retourne les indices des tuples dont la clé vaut *value*."""
+        """
+        Retourne les numéros de blocs contenant des tuples dont la clé vaut *value*.
+
+        Les doublons sont supprimés (plusieurs tuples dans le même bloc → un seul
+        numéro de bloc retourné) tout en préservant l'ordre de découverte.
+        """
         self._ensure_dir_loaded()
         b = self._bucket_id(value)
         start, count = self._directory[b]
 
         self._storage.open()
-        results = [
-            idx
-            for key, idx in self._storage.scan_range(start, start + count)
-            if key == value
-        ]
+        seen: dict[int, None] = {}
+        for key, block_no in self._storage.scan_range(start, start + count):
+            if key == value and block_no not in seen:
+                seen[block_no] = None
         self._storage.close()
-        return results
+        return list(seen)
 
     # ── statistiques ───────────────────────────────────────────────────────
 
@@ -166,6 +173,11 @@ class StaticHashIndex:
                 raise RuntimeError(
                     "StaticHashIndex : index non construit (appeler build() d'abord)."
                 )
+
+    @staticmethod
+    def _get_block_size(table) -> int:
+        """Retourne la taille de bloc de *table* (1 pour TableMemoire)."""
+        return getattr(table, "block_size", 1)
 
     @staticmethod
     def _iter_table(table):
