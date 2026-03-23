@@ -121,12 +121,7 @@ class DynamicHashIndex:
         # 2. Sérialiser sur disque
         self._flush_to_disk()
 
-        print(
-            f"[DynamicHash] index construit : {self._size} entrées | "
-            f"profondeur globale={self.global_depth} "
-            f"répertoire={len(self._mem_directory)} entrées (col={col}) "
-            f"→ {self._data_path}"
-        )
+        # index construit
 
     # ── recherche ──────────────────────────────────────────────────────────
 

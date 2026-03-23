@@ -100,10 +100,7 @@ class StaticHashIndex:
         self._directory = directory
         self._save_dir()
 
-        print(
-            f"[StaticHash] index construit : {self._size} entrées "
-            f"dans {self.nb_buckets} seaux (col={col}) → {self._data_path}"
-        )
+        # index construit
 
     # ── recherche ──────────────────────────────────────────────────────────
 

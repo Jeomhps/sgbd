@@ -67,7 +67,7 @@ class TableDisque:
                     for _ in range(tuple_size):
                         f.write(struct.pack('i', 0))
         
-        print(f"✅ Disk table created: {table_size} tuples × {tuple_size} attributes")
+        # table created on disk
     
     def open(self):
         """Open the table file for reading."""

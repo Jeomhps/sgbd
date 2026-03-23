@@ -176,11 +176,7 @@ class BPlusTreeIndex:
         self._flush_to_disk()
         self._built = True
 
-        print(
-            f"[B+Tree] index construit : {self._size} entrées "
-            f"hauteur={self._height} ordre={self.order} (col={col}) "
-            f"→ {self._data_path}"
-        )
+        # index construit
 
     # ── recherche exacte ───────────────────────────────────────────────────
 
