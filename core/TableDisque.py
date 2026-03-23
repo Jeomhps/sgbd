@@ -82,7 +82,7 @@ class TableDisque:
             raise ValueError("Invalid table file format")
         
         self.table_size, self.tuple_size = struct.unpack('II', header)
-        print(f"📖 Opened disk table: {self.table_size} tuples × {self.tuple_size} attributes")
+        # table_size and tuple_size loaded from header
     
     def close(self):
         """Close the table file."""
